@@ -3,7 +3,7 @@ package com.flowzapi.flowz_api_builder.model;
 public final class ProjectBuilder {
     private String id;
     private String projectName;
-    private String userID;
+    private String userId;
 
     private ProjectBuilder() {
     }
@@ -22,8 +22,8 @@ public final class ProjectBuilder {
         return this;
     }
 
-    public ProjectBuilder withUserID(String userID) {
-        this.userID = userID;
+    public ProjectBuilder withUserId(String userId) {
+        this.userId = userId;
         return this;
     }
 
@@ -31,7 +31,7 @@ public final class ProjectBuilder {
         Project project = new Project();
         project.setId(id);
         project.setProjectName(projectName);
-        project.setUserID(userID);
+        project.setUserId(userId);
         return project;
     }
 }

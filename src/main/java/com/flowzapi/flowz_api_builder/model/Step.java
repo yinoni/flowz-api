@@ -7,9 +7,8 @@ import java.util.Map;
 public class Step {
     private String url;
     private String title;
-    private Map<String, String> body;
+    private String body;
     private Map<String, String> headers;
-    private String flowID;
     private String httpMethod;
 
     // כאן נכנסים המשתנים הדינמיים שאתה רוצה לחלץ
@@ -39,11 +38,11 @@ public class Step {
         this.title = title;
     }
 
-    public Map<String, String> getBody() {
+    public String getBody() {
         return body;
     }
 
-    public void setBody(Map<String, String> body) {
+    public void setBody(String body) {
         this.body = body;
     }
 
@@ -53,14 +52,6 @@ public class Step {
 
     public void setHeaders(Map<String, String> headers) {
         this.headers = headers;
-    }
-
-    public String getFlowID() {
-        return flowID;
-    }
-
-    public void setFlowID(String flowID) {
-        this.flowID = flowID;
     }
 
     public String getHttpMethod() {

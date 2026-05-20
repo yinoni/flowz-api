@@ -1,16 +1,18 @@
 package com.flowzapi.flowz_api_builder.model;
 
+import lombok.Data;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
 
-@Document
+@Data
+@Document(collection = "projects")
 public class Project {
     @Id
     private String id;
 
     private String projectName;
 
-    private String userID;
+    private String userId;
 
     public Project() {
     }
@@ -31,12 +33,12 @@ public class Project {
         this.projectName = projectName;
     }
 
-    public String getUserID() {
-        return userID;
+    public String getUserId() {
+        return userId;
     }
 
-    public void setUserID(String userID) {
-        this.userID = userID;
+    public void setUserId(String userId) {
+        this.userId = userId;
     }
 
 

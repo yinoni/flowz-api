@@ -5,7 +5,7 @@ import java.util.List;
 public final class FlowBuilder {
     private String id;
     private String flowName;
-    private String projectID;
+    private String projectId;
     private List<Step> steps;
 
     private FlowBuilder() {
@@ -25,8 +25,8 @@ public final class FlowBuilder {
         return this;
     }
 
-    public FlowBuilder withProjectID(String projectID) {
-        this.projectID = projectID;
+    public FlowBuilder withProjectId(String projectId) {
+        this.projectId = projectId;
         return this;
     }
 
@@ -39,7 +39,7 @@ public final class FlowBuilder {
         Flow flow = new Flow();
         flow.setId(id);
         flow.setFlowName(flowName);
-        flow.setProjectID(projectID);
+        flow.setProjectId(projectId);
         flow.setSteps(steps);
         return flow;
     }
