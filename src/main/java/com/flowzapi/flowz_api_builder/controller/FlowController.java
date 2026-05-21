@@ -38,11 +38,21 @@ public class FlowController {
         );
 
         Map<String,String> extract = Map.of(
-                "jwtToken", "body.data.jwtToken");
+                "userId", "userId",
+                "body", "body",
+                "false", "false");
+
+        String body2 = """
+                {
+                    "userId": "{{userId}}",
+                    "postName": "Blabla",
+                    "postDesc": "psdada"
+                }
+                """;
 
         Map<String, Object> assertions = Map.of("status", 200, "body.success", true);
 
-        Step step = aStep()
+        Step step1 = aStep()
                 .withUrl("https://jsonplaceholder.typicode.com/posts/1")
                 .withTitle("Temp")
                 .withHeaders(headers)
@@ -51,8 +61,18 @@ public class FlowController {
                 .withAssertions(assertions)
                 .build();
 
+        Step step2 = aStep()
+                .withUrl("https://jsonplaceholder.typicode.com/posts/1")
+                .withTitle("New Post")
+                .withHeaders(headers)
+                .withHttpMethod("POST")
+                .withExtract(extract)
+                .withAssertions(assertions)
+                .withBody(body2)
+                .build();
 
-        flowService.executeSteps(List.of(step));
+
+        flowService.executeSteps(List.of(step1, step2));
         return ResponseEntity.ok("Working!");
     }
 
