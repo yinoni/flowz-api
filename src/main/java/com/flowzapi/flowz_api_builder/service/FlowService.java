@@ -32,9 +32,9 @@ public class FlowService {
 
                 HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
 
-                String body = response.body();
-
-                flowContent.putAll(extractBody(response.body(), step.getExtract()));
+                Map<String, Object> mappedBody = objectMapper.readValue(response.body(), Map.class);
+                mappedBody.put("status", response.statusCode());
+                flowContent.putAll(extractBody(mappedBody, step.getExtract(), step.getAssertions()));
             } catch (Exception e) {
                 System.out.println("משהו השתבש בשליחת הבקשה: " + e.getMessage());
                 e.printStackTrace();
@@ -92,8 +92,7 @@ public class FlowService {
 
 
 
-    public Map<String, Object> extractBody(String body, Map<String, String> extractorMap, Map<String, Object> assertions) {
-        Map<String, Object> mappedBody = objectMapper.readValue(body, Map.class);
+    public Map<String, Object> extractBody(Map<String, Object> mappedBody, Map<String, String> extractorMap, Map<String, Object> assertions) {
         List<String> errors = new ArrayList<>();
 
         if(mappedBody.isEmpty())
@@ -110,13 +109,13 @@ public class FlowService {
                 String expectedValue = String.valueOf(assertionEntry.getValue());
 
                 if (!Objects.equals(actualValue, expectedValue)) {
-                    errors.add("Error! expected " + assertionEntry.getKey() + " value to be: " + expectedValue + " but got: " + actualValue);
+                    errors.add("Error! expected '" + assertionEntry.getKey() + "' value to be: " + expectedValue + " but got: " + actualValue);
                 }
             }
 
         }
 
-        if(errors.isEmpty())
+        if(!errors.isEmpty())
             throw new RuntimeException("Assertion failed: " + errors);
 
         for(Map.Entry<String, String> extractorEntry : extractorMap.entrySet()){
