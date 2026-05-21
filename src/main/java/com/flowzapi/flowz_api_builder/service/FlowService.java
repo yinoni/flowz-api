@@ -36,7 +36,6 @@ public class FlowService {
                 mappedBody.put("status", response.statusCode());
                 flowContent.putAll(extractBody(mappedBody, step.getExtract(), step.getAssertions()));
             } catch (Exception e) {
-                System.out.println("משהו השתבש בשליחת הבקשה: " + e.getMessage());
                 e.printStackTrace();
             }
         }
