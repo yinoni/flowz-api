@@ -11,9 +11,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 @Service
 public class FlowService {
@@ -33,6 +31,8 @@ public class FlowService {
                 HttpRequest request = buildRequest(step, flowContent);
 
                 HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+
+                String body = response.body();
 
                 flowContent.putAll(extractBody(response.body(), step.getExtract()));
             } catch (Exception e) {
@@ -88,8 +88,13 @@ public class FlowService {
         return requestBuilder.build();
     }
 
-    public Map<String, Object> extractBody(String body, Map<String, String> extractorMap){
+    //public List<String> isPassedAssertions()
+
+
+
+    public Map<String, Object> extractBody(String body, Map<String, String> extractorMap, Map<String, Object> assertions) {
         Map<String, Object> mappedBody = objectMapper.readValue(body, Map.class);
+        List<String> errors = new ArrayList<>();
 
         if(mappedBody.isEmpty())
             return mappedBody;
@@ -97,9 +102,26 @@ public class FlowService {
         Map<String, Object> flattenedMap = flattener.flatten(mappedBody, extractorMap);
         Map<String, Object> extractedBody = new HashMap<>();
 
-        for(Map.Entry<String, String> entry : extractorMap.entrySet()){
-            if(flattenedMap.containsKey(entry.getValue())){
-                extractedBody.put(entry.getKey(), flattenedMap.get(entry.getValue()));
+        for(Map.Entry<String, Object> assertionEntry : assertions.entrySet()){
+            if(!flattenedMap.containsKey(assertionEntry.getKey()))
+                errors.add("Error! expected " + assertionEntry.getKey() + " value to be: " + assertionEntry.getValue() + " but got nothing");
+            else{
+                String actualValue = String.valueOf(flattenedMap.get(assertionEntry.getKey()));
+                String expectedValue = String.valueOf(assertionEntry.getValue());
+
+                if (!Objects.equals(actualValue, expectedValue)) {
+                    errors.add("Error! expected " + assertionEntry.getKey() + " value to be: " + expectedValue + " but got: " + actualValue);
+                }
+            }
+
+        }
+
+        if(errors.isEmpty())
+            throw new RuntimeException("Assertion failed: " + errors);
+
+        for(Map.Entry<String, String> extractorEntry : extractorMap.entrySet()){
+            if(flattenedMap.containsKey(extractorEntry.getValue())){
+                extractedBody.put(extractorEntry.getKey(), flattenedMap.get(extractorEntry.getValue()));
             }
         }
 
