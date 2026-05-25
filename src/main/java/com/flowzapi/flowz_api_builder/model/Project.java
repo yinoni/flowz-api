@@ -1,5 +1,7 @@
 package com.flowzapi.flowz_api_builder.model;
 
+import com.flowzapi.flowz_api_builder.model.project.ProjectDTO;
+import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
@@ -10,8 +12,10 @@ public class Project {
     @Id
     private String id;
 
+    @NotNull
     private String projectName;
 
+    @NotNull
     private String userId;
 
     public Project() {
@@ -41,5 +45,11 @@ public class Project {
         this.userId = userId;
     }
 
+    public ProjectDTO convertToDTO() {
+        ProjectDTO projectDTO = new ProjectDTO();
+        projectDTO.setProjectId(this.id);
+        projectDTO.setProjectName(this.projectName);
+        return projectDTO;
+    }
 
 }

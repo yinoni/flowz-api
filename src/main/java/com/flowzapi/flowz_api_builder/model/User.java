@@ -1,8 +1,11 @@
 package com.flowzapi.flowz_api_builder.model;
 
+import com.flowzapi.flowz_api_builder.model.user.UserDTO;
 import lombok.Data;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
+
+import static com.flowzapi.flowz_api_builder.model.user.UserDTOBuilder.anUserDTO;
 
 @Data
 @Document(collection = "projects")
@@ -57,5 +60,12 @@ public class User {
         this.verified = verified;
     }
 
+    public UserDTO convertToUserDTO() {
+        return anUserDTO()
+                .withEmail(this.email)
+                .withId(this.id)
+                .withUsername(this.username)
+                .build();
+    }
 
 }
