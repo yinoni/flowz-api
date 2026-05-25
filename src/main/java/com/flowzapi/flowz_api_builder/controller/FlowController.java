@@ -50,7 +50,7 @@ public class FlowController {
                 }
                 """;
 
-        Map<String, Object> assertions = Map.of("status", 200, "body.success", true);
+        Map<String, Object> assertions = Map.of("status", 201);
 
         Step step1 = aStep()
                 .withUrl("https://jsonplaceholder.typicode.com/posts/1")
