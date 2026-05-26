@@ -32,6 +32,9 @@ public class UserService {
     public UserDTO login(AuthenticationRequest request){
         User lookupUser = this.findByEmail(request.getEmail());
 
+        if(!lookupUser.getPassword().equals(request.getPassword()))
+            throw new AuthenticationException("Username or password incorrect!", HttpStatus.UNAUTHORIZED);
+
 
         return lookupUser.convertToUserDTO();
 

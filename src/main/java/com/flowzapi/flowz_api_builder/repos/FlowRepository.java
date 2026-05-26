@@ -11,4 +11,6 @@ import java.util.List;
 @Repository
 public interface FlowRepository extends MongoRepository<Flow, String> {
     List<Flow> findByProjectId(String projectId);
+
+    void deleteByProjectId(String projectId);
 }

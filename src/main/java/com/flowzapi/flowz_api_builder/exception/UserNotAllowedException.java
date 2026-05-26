@@ -4,7 +4,7 @@ import org.springframework.http.HttpStatus;
 
 public class UserNotAllowedException extends BaseException {
 
-    public UserNotAllowedException(String message, HttpStatus status) {
-        super(message, status);
+    public UserNotAllowedException(String message) {
+        super(message, HttpStatus.FORBIDDEN);
     }
 }
