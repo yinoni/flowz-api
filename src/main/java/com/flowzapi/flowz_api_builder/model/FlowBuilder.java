@@ -6,6 +6,7 @@ public final class FlowBuilder {
     private String id;
     private String flowName;
     private String projectId;
+    private String ownerId;
     private List<Step> steps;
 
     private FlowBuilder() {
@@ -30,6 +31,11 @@ public final class FlowBuilder {
         return this;
     }
 
+    public FlowBuilder withOwnerId(String ownerId) {
+        this.ownerId = ownerId;
+        return this;
+    }
+
     public FlowBuilder withSteps(List<Step> steps) {
         this.steps = steps;
         return this;
@@ -40,6 +46,7 @@ public final class FlowBuilder {
         flow.setId(id);
         flow.setFlowName(flowName);
         flow.setProjectId(projectId);
+        flow.setOwnerId(ownerId);
         flow.setSteps(steps);
         return flow;
     }

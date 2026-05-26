@@ -1,10 +1,13 @@
 package com.flowzapi.flowz_api_builder.model;
 
+import com.flowzapi.flowz_api_builder.model.flow.FlowDTO;
 import lombok.Data;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
 
 import java.util.List;
+
+import static com.flowzapi.flowz_api_builder.model.flow.FlowDTOBuilder.aFlowDTO;
 
 @Data
 @Document(collection = "flows")
@@ -13,6 +16,7 @@ public class Flow {
     private String id;
     private String flowName;
     private String projectId;
+    private String ownerId;
     private List<Step> steps;
 
     public Flow() {
@@ -50,5 +54,19 @@ public class Flow {
         this.projectId = projectId;
     }
 
+    public String getOwnerId() {
+        return ownerId;
+    }
 
+    public void setOwnerId(String ownerId) {
+        this.ownerId = ownerId;
+    }
+
+    public FlowDTO convertToDTO() {
+        return aFlowDTO()
+                .withFlowName(this.flowName)
+                .withId(this.id)
+                .withProjectId(this.projectId)
+                .build();
+    }
 }

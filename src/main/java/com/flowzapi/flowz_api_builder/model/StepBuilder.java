@@ -3,6 +3,7 @@ package com.flowzapi.flowz_api_builder.model;
 import java.util.Map;
 
 public final class StepBuilder {
+    private String id;
     private String url;
     private String title;
     private String body;
@@ -16,6 +17,11 @@ public final class StepBuilder {
 
     public static StepBuilder aStep() {
         return new StepBuilder();
+    }
+
+    public StepBuilder withId(String id) {
+        this.id = id;
+        return this;
     }
 
     public StepBuilder withUrl(String url) {
@@ -55,6 +61,7 @@ public final class StepBuilder {
 
     public Step build() {
         Step step = new Step();
+        step.setId(id);
         step.setUrl(url);
         step.setTitle(title);
         step.setBody(body);
