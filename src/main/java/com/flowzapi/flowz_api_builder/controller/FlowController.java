@@ -72,6 +72,7 @@ public class FlowController {
         return ResponseEntity.ok("step added");
     }
 
+    /*
     @PostMapping("/execute/{flowId}")
     public ResponseEntity<FlowTestResponse> executeTemp(@PathVariable String flowId, @AuthenticationPrincipal CustomUserDetails customUserDetails) {
         FlowTestResponse testResponse = flowService.executeSteps(flowId, customUserDetails.getId());
@@ -80,5 +81,7 @@ public class FlowController {
 
         return new ResponseEntity<>(testResponse, HttpStatus.ACCEPTED);
     }
+
+     */
 
 }
