@@ -16,7 +16,6 @@ import org.springframework.stereotype.Service;
 import java.util.ArrayList;
 import java.util.List;
 
-import static com.flowzapi.flowz_api_builder.controller.FlowController.GLOBAL_USER;
 import static com.flowzapi.flowz_api_builder.model.ProjectBuilder.aProject;
 
 @Service
@@ -29,10 +28,13 @@ public class ProjectService {
     @Autowired
     private FlowService flowService;
 
-    public Project findById(String id) {
+    public Project findById(String id, String userId) {
         Project project = projectRepository.findById(id).orElseThrow(
                 () -> new ProjectNotExistsException("Project not exists")
         );
+
+        if(!project.getUserId().equals(userId))
+            throw new UserNotAllowedException("User not allowed to update project");
 
         return project;
     }
@@ -52,26 +54,26 @@ public class ProjectService {
         return projectDTOS;
     }
 
-    public ProjectDTO createProject(ProjectInput projectInput) {
+    public ProjectDTO createProject(ProjectInput projectInput, String userId) {
         Project project = aProject()
-                .withUserId(GLOBAL_USER)
+                .withUserId(userId)
                 .withProjectName(projectInput.getProjectName()).build();
 
         return projectRepository.save(project).convertToDTO();
     }
 
-    public ProjectDTO updateProject(ProjectUpdateInput projectInput) {
+    public ProjectDTO updateProject(ProjectUpdateInput projectInput, String userId) {
         if(projectInput.getProjectName() == null || projectInput.getProjectName().equals(""))
             throw new BadRequestException("projectName is required", HttpStatus.BAD_REQUEST);
 
-        Project project = this.findById(projectInput.getProjectId());
+        Project project = this.findById(projectInput.getProjectId(), userId);
 
         project.setProjectName(projectInput.getProjectName());
         return projectRepository.save(project).convertToDTO();
     }
 
     public void deleteProject(String projectId, String userId) {
-        Project project = this.findById(projectId);
+        Project project = this.findById(projectId,  userId);
         if(!project.getUserId().equals(userId))
             throw new UserNotAllowedException("You are not allowed to delete this project");
 

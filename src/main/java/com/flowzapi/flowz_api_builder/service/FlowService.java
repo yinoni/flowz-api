@@ -22,11 +22,11 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.util.*;
 
-import static com.flowzapi.flowz_api_builder.controller.FlowController.GLOBAL_USER;
 import static com.flowzapi.flowz_api_builder.model.FlowBuilder.aFlow;
 
 @Service
 public class FlowService {
+
     @Autowired
     private ObjectMapper objectMapper;
     private JsonFlattener flattener = new JsonFlattener();
@@ -43,7 +43,7 @@ public class FlowService {
     }
 
     public void isUserAllowed(String flowUserId, String currentUserId){
-        if(!flowUserId.equals(GLOBAL_USER))
+        if(!flowUserId.equals(currentUserId))
             throw new UserNotAllowedException("User is not allowed to access flow");
     }
 
@@ -53,16 +53,14 @@ public class FlowService {
      * @return - Saves this flow with the flow name from the flowInput var and returns
      * flow DTO that contains all the new flow data
      */
-    public FlowDTO createFlow(FlowInput flowInput) {
-        Project project = projectService.findById(flowInput.getProjectId());
+    public FlowDTO createFlow(FlowInput flowInput, String userId) {
+        Project project = projectService.findById(flowInput.getProjectId(), userId);
 
-        if(!project.getUserId().equals(GLOBAL_USER))
-            throw new UserNotAllowedException("You are not allowed to create a flow");
 
         Flow flow = aFlow()
                 .withFlowName(flowInput.getFlowName())
                 .withProjectId(project.getId())
-                .withOwnerId(GLOBAL_USER)
+                .withOwnerId(userId)
                 .withSteps(List.of())
                 .build();
 
@@ -90,9 +88,8 @@ public class FlowService {
      * @return - All the flows of the project with projectId
      */
     public List<FlowDTO> getFlowsByProjectId(String projectId, String userId){
-        Project project = projectService.findById(projectId);
-        if(!project.getUserId().equals(GLOBAL_USER))
-            throw new UserNotAllowedException("You are not allowed to see this flow");
+        Project project = projectService.findById(projectId, userId);
+
         List<Flow> flows = flowRepository.findByProjectId(projectId);
 
         return flows.stream().map(f -> f.convertToDTO()).toList();

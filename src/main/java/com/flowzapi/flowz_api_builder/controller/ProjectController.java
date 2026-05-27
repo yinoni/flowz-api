@@ -4,15 +4,15 @@ import com.flowzapi.flowz_api_builder.model.Project;
 import com.flowzapi.flowz_api_builder.model.project.ProjectDTO;
 import com.flowzapi.flowz_api_builder.model.project.ProjectInput;
 import com.flowzapi.flowz_api_builder.model.project.ProjectUpdateInput;
+import com.flowzapi.flowz_api_builder.model.user.CustomUserDetails;
 import com.flowzapi.flowz_api_builder.service.FlowService;
 import com.flowzapi.flowz_api_builder.service.ProjectService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-
-import static com.flowzapi.flowz_api_builder.controller.FlowController.GLOBAL_USER;
 
 @RestController
 @RequestMapping("/project")
@@ -23,31 +23,32 @@ public class ProjectController {
 
 
     @GetMapping("")
-    public ResponseEntity<?> getProjectById(@RequestParam String projectId){
-        return ResponseEntity.ok(projectService.findById(projectId));
+    public ResponseEntity<?> getProjectById(@RequestParam String projectId, @AuthenticationPrincipal CustomUserDetails customUserDetails) {
+        System.out.println("CustomUserDetails: " + customUserDetails.getId());
+        return ResponseEntity.ok(projectService.findById(projectId, customUserDetails.getId()));
     }
 
     @PostMapping("")
-    public ResponseEntity<?> createProject(@RequestBody ProjectInput projectInput) {
-        ProjectDTO newProject = projectService.createProject(projectInput);
+    public ResponseEntity<?> createProject(@RequestBody ProjectInput projectInput, @AuthenticationPrincipal CustomUserDetails customUserDetails) {
+        ProjectDTO newProject = projectService.createProject(projectInput, customUserDetails.getId());
 
         return ResponseEntity.ok(newProject);
     }
 
     @PatchMapping("")
-    public ResponseEntity<?> updateProject(@RequestBody ProjectUpdateInput projectInput) {
-        return ResponseEntity.ok(projectService.updateProject(projectInput));
+    public ResponseEntity<?> updateProject(@RequestBody ProjectUpdateInput projectInput, @AuthenticationPrincipal CustomUserDetails customUserDetails) {
+        return ResponseEntity.ok(projectService.updateProject(projectInput, customUserDetails.getId()));
     }
 
     @DeleteMapping("")
-    public ResponseEntity<?> deleteProject(@RequestParam String projectId) {
-        projectService.deleteProject(projectId, GLOBAL_USER);
+    public ResponseEntity<?> deleteProject(@RequestParam String projectId, @AuthenticationPrincipal CustomUserDetails customUserDetails) {
+        projectService.deleteProject(projectId, customUserDetails.getId());
         return ResponseEntity.ok("project deleted");
     }
 
     @GetMapping("/user")
-    public ResponseEntity<?> getProjectByUserId() {
-        List<ProjectDTO> projectDTOList = projectService.findByUserId(GLOBAL_USER);
+    public ResponseEntity<?> getProjectByUserId(@AuthenticationPrincipal CustomUserDetails customUserDetails) {
+        List<ProjectDTO> projectDTOList = projectService.findByUserId(customUserDetails.getId());
         return ResponseEntity.ok(projectDTOList);
     }
 }
