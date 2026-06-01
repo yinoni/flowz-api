@@ -11,12 +11,11 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
         registry.addEndpoint("/ws-flow")
-                .setAllowedOriginPatterns("*")
-                .withSockJS();
+                .setAllowedOrigins("http://localhost:3000");
     }
 
     @Override
     public void configureMessageBroker(MessageBrokerRegistry registry) {
-        registry.enableSimpleBroker("/topic");
+        registry.enableSimpleBroker("/flow-events");
     }
 }

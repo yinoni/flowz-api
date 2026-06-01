@@ -1,40 +1,21 @@
 package com.flowzapi.flowz_api_builder.model.flow;
 
+import lombok.Getter;
+import lombok.Setter;
+
+@Getter
+@Setter
 public class FlowTestResponse {
     private String status;
     private boolean testPassed;
-    private String failedAssertion;
+    private String message;
 
     public FlowTestResponse() {
     }
 
-    public FlowTestResponse(String status, String failedAssertion, boolean testPassed) {
+    public FlowTestResponse(String status, String message, boolean testPassed) {
         this.status = status;
-        this.failedAssertion = failedAssertion;
+        this.message = message;
         this.testPassed = testPassed;
-    }
-
-    public String getStatus() {
-        return status;
-    }
-
-    public void setStatus(String status) {
-        this.status = status;
-    }
-
-    public boolean isTestPassed() {
-        return testPassed;
-    }
-
-    public void setTestPassed(boolean testPassed) {
-        this.testPassed = testPassed;
-    }
-
-    public String getFailedAssertion() {
-        return failedAssertion;
-    }
-
-    public void setFailedAssertion(String failedAssertion) {
-        this.failedAssertion = failedAssertion;
     }
 }

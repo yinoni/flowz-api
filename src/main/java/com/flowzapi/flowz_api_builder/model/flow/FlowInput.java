@@ -1,25 +1,20 @@
 package com.flowzapi.flowz_api_builder.model.flow;
 
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
+
+import java.util.HashMap;
+import java.util.Map;
+
+@Getter
+@Setter
+@NoArgsConstructor
 public class FlowInput {
     private String projectId;
     private String flowName;
+    private String globalURL;
+    private Map<String, String> globalHeaders = new HashMap<>();
+    private Map<String, Object> globalVariables = new HashMap<>();
 
-    public FlowInput() {
-    }
-
-    public String getProjectId() {
-        return projectId;
-    }
-
-    public void setProjectId(String projectId) {
-        this.projectId = projectId;
-    }
-
-    public String getFlowName() {
-        return flowName;
-    }
-
-    public void setFlowName(String flowName) {
-        this.flowName = flowName;
-    }
 }
