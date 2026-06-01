@@ -89,8 +89,6 @@ public class FlowExecutionService {
                 if(!userId.equals(userID))
                     throw new UserNotAllowedException("User not allowed to do this action");
 
-                System.out.println("SOCKET MESSAGE => Starting....");
-
                 messagingTemplate.convertAndSend(SOCKET_TOPIC_DESTINATION + executionID, (Object) Map.of(
                         "status", "FLOW_STARTING",
                         "success", true,
@@ -116,13 +114,11 @@ public class FlowExecutionService {
             }
         }
         catch(Exception e){
-            //Send here socket event
             messagingTemplate.convertAndSend(SOCKET_TOPIC_DESTINATION + executionID, (Object) Map.of(
                     "status", "FLOW_FAILED",
                     "success", false,
                     "message", e.getMessage()
             ));
-            System.out.println("SOCKET MESSAGE => Error! ====> " + e.getMessage());
         }
         finally {
             redisTemplate.delete(REDIS_EXECUTION_ID_KEY + executionID);
@@ -146,7 +142,6 @@ public class FlowExecutionService {
 
         for (Step step : lookupFlow.getSteps()) {
             try {
-                // 1. מייצרים את הקליינט (ה"דפדפן" הווירטואלי שלנו)
                 HttpClient client = HttpClient.newHttpClient();
 
                 HttpRequest request = buildRequest(step, flowContent, lookupFlow);
@@ -157,18 +152,13 @@ public class FlowExecutionService {
                 String bodyString = response.body() != null ? response.body().trim() : "";
 
                 if (!bodyString.isEmpty()) {
-                    // בדיקה האם ה-Body נראה כמו אובייקט JSON תקין ({) או מערך JSON ([)
                     if (bodyString.startsWith("{") || bodyString.startsWith("[")) {
                         try {
-                            // אם זה JSON - נפרסר אותו כרגיל ל-Map
                             mappedBody = objectMapper.readValue(bodyString, Map.class);
                         } catch (Exception jsonEx) {
-                            // ליתר ביטחון, אם הפארסינג נכשל למרות הסוגריים, נתייחס לזה כטקסט נקי
                             mappedBody.put("rawValue", bodyString);
                         }
                     } else {
-                        // בום! הגענו לכאן במקרה של ה-JWT או טקסט נקי.
-                        // אנחנו עוטפים את הסטרינג הנקי בתוך ה-Map בעצמנו!
                         mappedBody.put("rawValue", bodyString);
                     }
                 }
@@ -185,22 +175,21 @@ public class FlowExecutionService {
                 messagingTemplate.convertAndSend(SOCKET_TOPIC_DESTINATION + executionID, (Object) Map.of(
                         "status", "STEP_PASSED",
                         "success", true,
-                        "message", "'" + step.getTitle() + "' Test Passed!"
+                        "message", "'" + step.getTitle() + "' Test Passed!",
+                        step.getId(), true
                 ));
                 stepNumber++;
             } catch (Exception e) {
-                //Send here event via socket
                 messagingTemplate.convertAndSend(SOCKET_TOPIC_DESTINATION + executionID, (Object) Map.of(
                         "status", "STEP_FAILED",
                         "success", false,
-                        "message", "'" + step.getTitle() + "' Test Failed!\n   " + e.getMessage()
+                        "message", "'" + step.getTitle() + "' Test Failed!\n   " + e.getMessage(),
+                        step.getId(), false
                 ));
-                return new FlowTestResponse("FLOW_FAILED",  e.getMessage(), false);
+                return new FlowTestResponse("FLOW_FAILED", "One of the steps got failed", false);
             }
         }
 
-
-        //Send here event via socket
         return new FlowTestResponse("FLOW_COMPLETED",  "", true);
     }
 
