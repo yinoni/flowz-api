@@ -5,6 +5,7 @@ import com.flowzapi.flowz_api_builder.model.Project;
 import com.flowzapi.flowz_api_builder.model.Step;
 import com.flowzapi.flowz_api_builder.model.StepBuilder;
 import com.flowzapi.flowz_api_builder.model.flow.FlowDTO;
+import com.flowzapi.flowz_api_builder.model.flow.FlowEditInput;
 import com.flowzapi.flowz_api_builder.model.flow.FlowInput;
 import com.flowzapi.flowz_api_builder.model.flow.FlowTestResponse;
 import com.flowzapi.flowz_api_builder.model.user.CustomUserDetails;
@@ -18,6 +19,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static com.flowzapi.flowz_api_builder.model.StepBuilder.aStep;
 
@@ -46,6 +48,12 @@ public class FlowController {
         return ResponseEntity.ok("Flow deleted");
     }
 
+    @PatchMapping("")
+    public ResponseEntity<?> editFlow(@RequestBody FlowEditInput flowEditInput, @AuthenticationPrincipal CustomUserDetails customUserDetails) {
+        flowService.editFlow(flowEditInput, customUserDetails.getId());
+        return ResponseEntity.ok("Flow edited");
+    }
+
     @GetMapping("/project")
     public ResponseEntity<List<FlowDTO>> getProjectFlows(@RequestParam String projectId,  @AuthenticationPrincipal CustomUserDetails customUserDetails) {
         List<FlowDTO> flowDTOS = flowService.getFlowsByProjectId(projectId, customUserDetails.getId());
@@ -53,16 +61,23 @@ public class FlowController {
     }
 
     @GetMapping("/steps")
-    public ResponseEntity<List<Step>> getFlowSteps(@RequestParam String flowId,   @AuthenticationPrincipal CustomUserDetails customUserDetails) {
+    public ResponseEntity<List<Step>> getFlowSteps(@RequestParam String flowId, @AuthenticationPrincipal CustomUserDetails customUserDetails) {
         List<Step> steps = flowService.getFlowSteps(flowId, customUserDetails.getId());
         return ResponseEntity.ok(steps);
     }
 
     @DeleteMapping("/steps/{flowId}")
-    public ResponseEntity<?> deleteFlowSteps(@RequestParam String stepId, @PathVariable String flowId, @AuthenticationPrincipal CustomUserDetails customUserDetails) {
+    public ResponseEntity<?> deleteFlowStep(@RequestParam String stepId, @PathVariable String flowId, @AuthenticationPrincipal CustomUserDetails customUserDetails) {
         flowService.deleteStep(flowId, stepId, customUserDetails.getId());
 
         return ResponseEntity.ok("step deleted");
+    }
+
+    @PutMapping("/steps/{flowId}")
+    public ResponseEntity<?> editFlowStep(@RequestBody Step stepEditInput, @PathVariable String flowId, @AuthenticationPrincipal CustomUserDetails customUserDetails) {
+        flowService.editStep(flowId, stepEditInput, customUserDetails.getId());
+
+        return ResponseEntity.ok("step edited");
     }
 
     @PostMapping("/steps/{flowId}")

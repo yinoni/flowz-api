@@ -6,6 +6,7 @@ import com.flowzapi.flowz_api_builder.model.Flow;
 import com.flowzapi.flowz_api_builder.model.Project;
 import com.flowzapi.flowz_api_builder.model.Step;
 import com.flowzapi.flowz_api_builder.model.flow.FlowDTO;
+import com.flowzapi.flowz_api_builder.model.flow.FlowEditInput;
 import com.flowzapi.flowz_api_builder.model.flow.FlowInput;
 import com.flowzapi.flowz_api_builder.model.flow.FlowTestResponse;
 import com.flowzapi.flowz_api_builder.repos.FlowRepository;
@@ -22,6 +23,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.util.*;
+import java.util.stream.Collectors;
 
 import static com.flowzapi.flowz_api_builder.model.FlowBuilder.aFlow;
 
@@ -55,7 +57,10 @@ public class FlowService {
                 .withFlowName(flowInput.getFlowName())
                 .withProjectId(project.getId())
                 .withOwnerId(userId)
-                .withSteps(List.of())
+                .withSteps(new ArrayList<>())
+                .withGlobalURL(flowInput.getGlobalURL())
+                .withGlobalVariables(flowInput.getGlobalVariables())
+                .withGlobalHeaders(flowInput.getGlobalHeaders())
                 .build();
 
         return flowRepository.save(flow).convertToDTO();
@@ -128,16 +133,57 @@ public class FlowService {
         flowRepository.delete(lookupFlow);
     }
 
+    /**
+     * This function deletes all the flows of a project
+     * @param projectId - The project ID
+     */
     public void deleteFlowByProjectId(String projectId){
         flowRepository.deleteByProjectId(projectId);
     }
 
+    /**
+     * This function deletes step from flow
+     * @param flowId - The ID of the flow
+     * @param stepId - The ID of the Step
+     * @param userId - The current user ID
+     */
     public void deleteStep(String flowId, String stepId, String userId){
         Flow lookupFlow = this.findById(flowId);
         isUserAllowed(lookupFlow.getOwnerId(), userId);
        List<Step> filteredStepsList = lookupFlow.getSteps().stream().filter(step -> !step.getId().equals(stepId)).toList();
        lookupFlow.setSteps(filteredStepsList);
        flowRepository.save(lookupFlow);
+    }
+
+    public void editStep(String flowId, Step step, String userId){
+        Flow lookupFlow = this.findById(flowId);
+        isUserAllowed(lookupFlow.getOwnerId(), userId);
+        List<Step> steps = lookupFlow.getSteps();
+
+        for(int i = 0; i< steps.size(); i++){
+            if(steps.get(i).getId().equals(step.getId())){
+                steps.set(i, step);
+                break;
+            }
+        }
+
+        flowRepository.save(lookupFlow);
+    }
+
+    /**
+     * This function edits an existing flow
+     * @param flowEditInput - The flow edit input - contains the flowId, the new flow name and the new globalURL
+     * @param userId - The ID of the current user
+     */
+    public void editFlow(FlowEditInput flowEditInput, String userId){
+        Flow flow = this.findById(flowEditInput.getId());
+        isUserAllowed(flow.getOwnerId(), userId);
+
+        flow.setFlowName(flowEditInput.getFlowName());
+        flow.setGlobalURL(flowEditInput.getGlobalURL());
+        flow.setGlobalHeaders(flowEditInput.getGlobalHeaders());
+
+        flowRepository.save(flow);
     }
 
 

@@ -34,7 +34,7 @@ public class FlowExecutionService {
     private final ObjectMapper objectMapper;
     private JsonFlattener flattener = new JsonFlattener();
     private final SimpMessagingTemplate messagingTemplate;
-    private final String SOCKET_TOPIC_DESTINATION = "/ws-flowz/flow-events/";
+    private final String SOCKET_TOPIC_DESTINATION = "/flow-events/";
 
     public Flow findById(String flowId) {
         return flowRepository.findById(flowId)
@@ -66,7 +66,6 @@ public class FlowExecutionService {
         return executionID;
     }
 
-    @Async
     public void executeFlow(String executionID, String userID){
         try{
             String redisValue = (String) redisTemplate.opsForValue().get(REDIS_EXECUTION_ID_KEY + executionID);
@@ -100,15 +99,11 @@ public class FlowExecutionService {
 
                 FlowTestResponse testResponse = executeSteps(flowId, userID, executionID);
 
-                System.out.println("SOCKET MESSAGE => Done....!");
-
                 messagingTemplate.convertAndSend(SOCKET_TOPIC_DESTINATION + executionID, (Object) Map.of(
-                        "status", "FLOW_COMPLETED",
-                        "success", true,
-                        "message", "Flow completed!"
+                        "status", testResponse.getStatus(),
+                        "success", testResponse.isTestPassed(),
+                        "message", testResponse.getMessage()
                 ));
-
-                System.out.println("SOCKET MESSAGE => " + testResponse.getStatus());
             }
             else {
                 messagingTemplate.convertAndSend(SOCKET_TOPIC_DESTINATION + executionID, (Object) Map.of(
@@ -124,7 +119,7 @@ public class FlowExecutionService {
             //Send here socket event
             messagingTemplate.convertAndSend(SOCKET_TOPIC_DESTINATION + executionID, (Object) Map.of(
                     "status", "FLOW_FAILED",
-                    "success", "false",
+                    "success", false,
                     "message", e.getMessage()
             ));
             System.out.println("SOCKET MESSAGE => Error! ====> " + e.getMessage());
@@ -154,38 +149,59 @@ public class FlowExecutionService {
                 // 1. מייצרים את הקליינט (ה"דפדפן" הווירטואלי שלנו)
                 HttpClient client = HttpClient.newHttpClient();
 
-                HttpRequest request = buildRequest(step, flowContent);
+                HttpRequest request = buildRequest(step, flowContent, lookupFlow);
 
                 HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
 
-                Map<String, Object> mappedBody = objectMapper.readValue(response.body(), Map.class);
-                mappedBody.put("status", response.statusCode());
+                Map<String, Object> mappedBody = new HashMap<>();
+                String bodyString = response.body() != null ? response.body().trim() : "";
+
+                if (!bodyString.isEmpty()) {
+                    // בדיקה האם ה-Body נראה כמו אובייקט JSON תקין ({) או מערך JSON ([)
+                    if (bodyString.startsWith("{") || bodyString.startsWith("[")) {
+                        try {
+                            // אם זה JSON - נפרסר אותו כרגיל ל-Map
+                            mappedBody = objectMapper.readValue(bodyString, Map.class);
+                        } catch (Exception jsonEx) {
+                            // ליתר ביטחון, אם הפארסינג נכשל למרות הסוגריים, נתייחס לזה כטקסט נקי
+                            mappedBody.put("rawValue", bodyString);
+                        }
+                    } else {
+                        // בום! הגענו לכאן במקרה של ה-JWT או טקסט נקי.
+                        // אנחנו עוטפים את הסטרינג הנקי בתוך ה-Map בעצמנו!
+                        mappedBody.put("rawValue", bodyString);
+                    }
+                }
+
+                boolean haveStatusAssertion = step.getAssertions() != null && step.getAssertions().containsKey("status");
+                int resStatusCode = response.statusCode();
+
+                if(!haveStatusAssertion && !(resStatusCode >= 200 && resStatusCode <= 299))
+                    return new FlowTestResponse("FLOW_FAILED", "The response returned with status code: " + resStatusCode,false);
+
+                mappedBody.put("status", resStatusCode);
                 flowContent.putAll(extractBody(mappedBody, step.getExtract(), step.getAssertions()));
-                System.out.println("Step number: " + stepNumber + " Passed!");
+
                 messagingTemplate.convertAndSend(SOCKET_TOPIC_DESTINATION + executionID, (Object) Map.of(
                         "status", "STEP_PASSED",
                         "success", true,
-                        "message", "Test " + stepNumber + " Passed!"
+                        "message", "'" + step.getTitle() + "' Test Passed!"
                 ));
                 stepNumber++;
             } catch (Exception e) {
                 //Send here event via socket
-                System.out.println("Step number: " + stepNumber + " Failed!");
-                System.out.println("Errors => " + e.getMessage());
-
-
                 messagingTemplate.convertAndSend(SOCKET_TOPIC_DESTINATION + executionID, (Object) Map.of(
                         "status", "STEP_FAILED",
                         "success", false,
-                        "message", "Test " + stepNumber + " Failed! Error: " + e.getMessage()
+                        "message", "'" + step.getTitle() + "' Test Failed!\n   " + e.getMessage()
                 ));
-                return new FlowTestResponse("FAILED",  e.getMessage(), false);
+                return new FlowTestResponse("FLOW_FAILED",  e.getMessage(), false);
             }
         }
 
 
         //Send here event via socket
-        return new FlowTestResponse("COMPLETED",  "", true);
+        return new FlowTestResponse("FLOW_COMPLETED",  "", true);
     }
 
     /**
@@ -194,10 +210,14 @@ public class FlowExecutionService {
      * @param flowContent - All the responses that got from the previous steps
      * @return - New http request for the current step
      */
-    public HttpRequest buildRequest(Step step, Map<String, Object> flowContent) {
+    public HttpRequest buildRequest(Step step, Map<String, Object> flowContent, Flow currentFlow) {
 
         String url = step.getUrl();
         String body = step.getBody();
+        Map<String, String> finalHeaders = new HashMap<>();
+
+        if(currentFlow.getGlobalHeaders() != null)
+            finalHeaders.putAll(currentFlow.getGlobalHeaders());
 
         for (Map.Entry<String, Object> entry : flowContent.entrySet()) {
             String placeholder = "{{" + entry.getKey() + "}}";
@@ -214,19 +234,19 @@ public class FlowExecutionService {
         HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
                 .uri(URI.create(url));
 
-        if(step.getHeaders() != null) {
-            for (Map.Entry<String, String> headerEntry : step.getHeaders().entrySet()) {
-                String headerVal = headerEntry.getValue();
+        if(step.getHeaders() != null)
+            finalHeaders.putAll(step.getHeaders());
 
-                if (headerVal != null) {
-                    for (Map.Entry<String, Object> envEntry : flowContent.entrySet()) {
-                        headerVal = headerVal.replace("{{" + envEntry.getKey() + "}}", String.valueOf(envEntry.getValue()));
-                    }
+        for (Map.Entry<String, String> headerEntry : finalHeaders.entrySet()) {
+            String headerVal = headerEntry.getValue();
+
+            if (headerVal != null) {
+                for (Map.Entry<String, Object> envEntry : flowContent.entrySet()) {
+                    headerVal = headerVal.replace("{{" + envEntry.getKey() + "}}", String.valueOf(envEntry.getValue()));
                 }
-
-                requestBuilder.header(headerEntry.getKey(), headerVal);
-
             }
+
+            requestBuilder.header(headerEntry.getKey(), headerVal);
         }
 
         HttpRequest.BodyPublisher bodyPublisher = (body != null && !body.isEmpty())
@@ -235,7 +255,6 @@ public class FlowExecutionService {
 
 
         requestBuilder.method(step.getHttpMethod(), bodyPublisher);
-
 
         return requestBuilder.build();
     }

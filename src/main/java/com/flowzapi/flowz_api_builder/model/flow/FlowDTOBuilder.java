@@ -1,9 +1,14 @@
 package com.flowzapi.flowz_api_builder.model.flow;
 
+import java.util.Map;
+
 public final class FlowDTOBuilder {
     private String id;
     private String flowName;
     private String projectId;
+    private String globalURL;
+    private Map<String, Object> globalVariables;
+    private Map<String, String> globalHeaders;
 
     private FlowDTOBuilder() {
     }
@@ -27,11 +32,29 @@ public final class FlowDTOBuilder {
         return this;
     }
 
+    public FlowDTOBuilder withGlobalURL(String globalURL) {
+        this.globalURL = globalURL;
+        return this;
+    }
+
+    public FlowDTOBuilder withGlobalVariables(Map<String, Object> globalVariables) {
+        this.globalVariables = globalVariables;
+        return this;
+    }
+
+    public FlowDTOBuilder withGlobalHeaders(Map<String, String> globalHeaders) {
+        this.globalHeaders = globalHeaders;
+        return this;
+    }
+
     public FlowDTO build() {
         FlowDTO flowDTO = new FlowDTO();
         flowDTO.setId(id);
         flowDTO.setFlowName(flowName);
         flowDTO.setProjectId(projectId);
+        flowDTO.setGlobalURL(globalURL);
+        flowDTO.setGlobalVariables(globalVariables);
+        flowDTO.setGlobalHeaders(globalHeaders);
         return flowDTO;
     }
 }

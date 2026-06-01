@@ -1,6 +1,7 @@
 package com.flowzapi.flowz_api_builder.model;
 
 import java.util.List;
+import java.util.Map;
 
 public final class FlowBuilder {
     private String id;
@@ -8,6 +9,9 @@ public final class FlowBuilder {
     private String projectId;
     private String ownerId;
     private List<Step> steps;
+    private String globalURL;
+    private Map<String, Object> globalVariables;
+    private Map<String, String> globalHeaders;
 
     private FlowBuilder() {
     }
@@ -41,6 +45,21 @@ public final class FlowBuilder {
         return this;
     }
 
+    public FlowBuilder withGlobalURL(String globalURL) {
+        this.globalURL = globalURL;
+        return this;
+    }
+
+    public FlowBuilder withGlobalVariables(Map<String, Object> globalVariables) {
+        this.globalVariables = globalVariables;
+        return this;
+    }
+
+    public FlowBuilder withGlobalHeaders(Map<String, String> globalHeaders) {
+        this.globalHeaders = globalHeaders;
+        return this;
+    }
+
     public Flow build() {
         Flow flow = new Flow();
         flow.setId(id);
@@ -48,6 +67,9 @@ public final class FlowBuilder {
         flow.setProjectId(projectId);
         flow.setOwnerId(ownerId);
         flow.setSteps(steps);
+        flow.setGlobalURL(globalURL);
+        flow.setGlobalVariables(globalVariables);
+        flow.setGlobalHeaders(globalHeaders);
         return flow;
     }
 }

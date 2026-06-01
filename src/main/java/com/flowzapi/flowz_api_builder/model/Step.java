@@ -1,10 +1,21 @@
 package com.flowzapi.flowz_api_builder.model;
 
+import lombok.EqualsAndHashCode;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 import org.springframework.data.mongodb.core.mapping.Document;
 
 import java.util.Map;
+import java.util.Objects;
 
+@Getter
+@Setter
+@NoArgsConstructor
+@EqualsAndHashCode(onlyExplicitlyIncluded = true)
 public class Step {
+
+    @EqualsAndHashCode.Include
     private String id;
     private String url;
     private String title;
@@ -20,70 +31,4 @@ public class Step {
     // בדיקות: למשל מפתח "status" וערך "200"
     private Map<String, Object> assertions;
 
-    public Step() {
-    }
-
-    public String getUrl() {
-        return url;
-    }
-
-    public void setUrl(String url) {
-        this.url = url;
-    }
-
-    public String getTitle() {
-        return title;
-    }
-
-    public void setTitle(String title) {
-        this.title = title;
-    }
-
-    public String getBody() {
-        return body;
-    }
-
-    public void setBody(String body) {
-        this.body = body;
-    }
-
-    public Map<String, String> getHeaders() {
-        return headers;
-    }
-
-    public void setHeaders(Map<String, String> headers) {
-        this.headers = headers;
-    }
-
-    public String getHttpMethod() {
-        return httpMethod;
-    }
-
-    public void setHttpMethod(String httpMethod) {
-        this.httpMethod = httpMethod;
-    }
-
-    public Map<String, String> getExtract() {
-        return extract;
-    }
-
-    public void setExtract(Map<String, String> extract) {
-        this.extract = extract;
-    }
-
-    public Map<String, Object> getAssertions() {
-        return assertions;
-    }
-
-    public void setAssertions(Map<String, Object> assertions) {
-        this.assertions = assertions;
-    }
-
-    public String getId() {
-        return id;
-    }
-
-    public void setId(String id) {
-        this.id = id;
-    }
 }

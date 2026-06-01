@@ -47,7 +47,7 @@ public class Project {
 
     public ProjectDTO convertToDTO() {
         ProjectDTO projectDTO = new ProjectDTO();
-        projectDTO.setProjectId(this.id);
+        projectDTO.setId(this.id);
         projectDTO.setProjectName(this.projectName);
         return projectDTO;
     }

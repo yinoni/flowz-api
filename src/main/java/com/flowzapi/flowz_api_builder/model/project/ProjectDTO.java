@@ -1,18 +1,18 @@
 package com.flowzapi.flowz_api_builder.model.project;
 
 public class ProjectDTO {
-    private String projectId;
+    private String id;
     private String projectName;
 
     public ProjectDTO() {
     }
 
-    public String getProjectId() {
-        return projectId;
+    public String getId() {
+        return id;
     }
 
-    public void setProjectId(String projectId) {
-        this.projectId = projectId;
+    public void setId(String id) {
+        this.id = id;
     }
 
     public String getProjectName() {
