@@ -39,7 +39,7 @@ public class SecurityConfig {
 
                 // 2. הגדרת חוקי גישה לנתיבים
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/auth/register", "/auth/login", "/ws-flow/**").permitAll() // נתיבי הרשמה ולוגין פתוחים לכולם
+                        .requestMatchers("/auth/register", "/auth/login", "/auth/google", "/ws-flow/**").permitAll() // נתיבי הרשמה ולוגין פתוחים לכולם
                         .anyRequest().authenticated() // כל שאר ה-Endpoints באפליקציה דורשים יוזר מחובר
                 )
 

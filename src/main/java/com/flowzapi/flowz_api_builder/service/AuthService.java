@@ -18,7 +18,9 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 
 import static com.flowzapi.flowz_api_builder.model.UserBuilder.anUser;
 
@@ -43,7 +45,7 @@ public class AuthService {
         return token;
     }
 
-    public String signup(SignUpRequest request){
+    public String signup(SignUpRequest request, boolean withGoogle){
         Optional<User> lookupUser = userRepository.findByEmail(request.getEmail());
 
         if(lookupUser.isPresent())
@@ -53,20 +55,32 @@ public class AuthService {
                 .withEmail(request.getEmail())
                 .withUsername(request.getUsername())
                 .withPassword(passwordEncoder.encode(request.getPassword()))
-                .withVerified(false)
+                .withVerified(withGoogle)
+                .withWithGoogle(withGoogle)
                 .build();
 
         newUser = userRepository.save(newUser);
 
-        CustomUserDetails customUserDetails = new CustomUserDetails(
-                newUser.getId(),
-                newUser.getEmail(),
-                newUser.getPassword()
-        );
-
-        String jwtToken = jwtService.generateToken(customUserDetails);
+        String jwtToken = jwtService.generateToken(newUser);
 
         return jwtToken;
+    }
 
+    public String authenticateWithGoogle(Map<String, String> userData){
+        String email = userData.get("email");
+        String username = userData.get("username");
+        String password = UUID.randomUUID().toString();
+        Optional<User> lookupUser = userRepository.findByEmail(userData.get("email"));
+
+        if(lookupUser.isPresent()) {
+            User user = lookupUser.get();
+            if(user.isWithGoogle())
+                return jwtService.generateToken(user);
+            else{
+                throw new AuthenticationException("Invalid email or password!", HttpStatus.UNAUTHORIZED);
+            }
+        }
+
+        return this.signup(new SignUpRequest(email, password, username), true);
     }
 }

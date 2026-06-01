@@ -6,6 +6,7 @@ public final class UserBuilder {
     private String password;
     private String email;
     private boolean verified;
+    private boolean withGoogle;
 
     private UserBuilder() {
     }
@@ -39,6 +40,11 @@ public final class UserBuilder {
         return this;
     }
 
+    public UserBuilder withWithGoogle(boolean withGoogle) {
+        this.withGoogle = withGoogle;
+        return this;
+    }
+
     public User build() {
         User user = new User();
         user.setId(id);
@@ -46,6 +52,7 @@ public final class UserBuilder {
         user.setPassword(password);
         user.setEmail(email);
         user.setVerified(verified);
+        user.setWithGoogle(withGoogle);
         return user;
     }
 }
