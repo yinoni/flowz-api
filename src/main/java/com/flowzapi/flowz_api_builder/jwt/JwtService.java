@@ -24,8 +24,18 @@ public class JwtService {
 
     private final long EXPIRATION_TIME = 1000 * 60 * 60 * 24;
 
-    // 1. יצירת טוקן
     public String generateToken(CustomUserDetails user) {
+        return JWT.create()
+                .withSubject(user.getEmail())
+                .withClaim("id", user.getId())
+                .withClaim("username", user.getUsername())
+                .withIssuedAt(new Date())
+                .withExpiresAt(new Date(System.currentTimeMillis() + EXPIRATION_TIME)) // בתוקף ל-24 שעות
+                .withIssuer("flowz-api")
+                .sign(algorithm);
+    }
+
+    public String generateToken(User user) {
         return JWT.create()
                 .withSubject(user.getEmail())
                 .withClaim("id", user.getId())
