@@ -29,6 +29,7 @@ public class JwtService {
                 .withSubject(user.getEmail())
                 .withClaim("id", user.getId())
                 .withClaim("username", user.getUsername())
+                .withClaim("verified",  user.isVerified())
                 .withIssuedAt(new Date())
                 .withExpiresAt(new Date(System.currentTimeMillis() + EXPIRATION_TIME)) // בתוקף ל-24 שעות
                 .withIssuer("flowz-api")
@@ -40,6 +41,7 @@ public class JwtService {
                 .withSubject(user.getEmail())
                 .withClaim("id", user.getId())
                 .withClaim("username", user.getUsername())
+                .withClaim("verified",  user.isVerified())
                 .withIssuedAt(new Date())
                 .withExpiresAt(new Date(System.currentTimeMillis() + EXPIRATION_TIME)) // בתוקף ל-24 שעות
                 .withIssuer("flowz-api")

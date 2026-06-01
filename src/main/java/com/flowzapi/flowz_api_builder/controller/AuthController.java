@@ -3,6 +3,7 @@ package com.flowzapi.flowz_api_builder.controller;
 import com.flowzapi.flowz_api_builder.jwt.JwtService;
 import com.flowzapi.flowz_api_builder.model.authentication.AuthenticationRequest;
 import com.flowzapi.flowz_api_builder.model.authentication.SignUpRequest;
+import com.flowzapi.flowz_api_builder.model.authentication.VerificationRequest;
 import com.flowzapi.flowz_api_builder.model.user.CustomUserDetails;
 import com.flowzapi.flowz_api_builder.model.user.UserDTO;
 import com.flowzapi.flowz_api_builder.service.AuthService;
@@ -17,6 +18,7 @@ import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -65,5 +67,19 @@ public class AuthController {
         String token = authService.authenticateWithGoogle(Map.of("email", email, "username", name));
 
         return ResponseEntity.ok(token);
+    }
+
+    @PostMapping("/validate-code")
+    public ResponseEntity<?> validateVerificationCode(@RequestBody VerificationRequest verificationRequest, @AuthenticationPrincipal CustomUserDetails customUserDetails) {
+        String token = authService.validateVerificationCode(verificationRequest.getCode(), customUserDetails.getId());
+
+        return ResponseEntity.ok(token);
+    }
+
+    @PostMapping("/resend-code")
+    public ResponseEntity<?> resendCode( @AuthenticationPrincipal CustomUserDetails customUserDetails) {
+        authService.resendVerificationCode(customUserDetails.getId(), customUserDetails.getEmail());
+
+        return ResponseEntity.ok("Sent verification code.");
     }
 }

@@ -64,7 +64,7 @@ public class ProjectService {
 
     public ProjectDTO updateProject(ProjectUpdateInput projectInput, String userId) {
         if(projectInput.getProjectName() == null || projectInput.getProjectName().equals(""))
-            throw new BadRequestException("projectName is required", HttpStatus.BAD_REQUEST);
+            throw new BadRequestException("project name is required", HttpStatus.BAD_REQUEST);
 
         Project project = this.findById(projectInput.getProjectId(), userId);
 
