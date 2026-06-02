@@ -7,6 +7,7 @@ import com.flowzapi.flowz_api_builder.model.project.ProjectUpdateInput;
 import com.flowzapi.flowz_api_builder.model.user.CustomUserDetails;
 import com.flowzapi.flowz_api_builder.service.FlowService;
 import com.flowzapi.flowz_api_builder.service.ProjectService;
+import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -29,14 +30,14 @@ public class ProjectController {
     }
 
     @PostMapping("")
-    public ResponseEntity<?> createProject(@RequestBody ProjectInput projectInput, @AuthenticationPrincipal CustomUserDetails customUserDetails) {
+    public ResponseEntity<?> createProject(@Valid @RequestBody ProjectInput projectInput, @AuthenticationPrincipal CustomUserDetails customUserDetails) {
         ProjectDTO newProject = projectService.createProject(projectInput, customUserDetails.getId());
 
         return ResponseEntity.ok(newProject);
     }
 
     @PatchMapping("")
-    public ResponseEntity<?> updateProject(@RequestBody ProjectUpdateInput projectInput, @AuthenticationPrincipal CustomUserDetails customUserDetails) {
+    public ResponseEntity<?> updateProject(@Valid @RequestBody ProjectUpdateInput projectInput, @AuthenticationPrincipal CustomUserDetails customUserDetails) {
         return ResponseEntity.ok(projectService.updateProject(projectInput, customUserDetails.getId()));
     }
 

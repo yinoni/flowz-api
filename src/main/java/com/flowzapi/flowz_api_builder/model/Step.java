@@ -1,5 +1,6 @@
 package com.flowzapi.flowz_api_builder.model;
 
+import jakarta.validation.constraints.NotBlank;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.NoArgsConstructor;

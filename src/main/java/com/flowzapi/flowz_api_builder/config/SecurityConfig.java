@@ -1,6 +1,7 @@
 package com.flowzapi.flowz_api_builder.config;
 
 import com.flowzapi.flowz_api_builder.jwt.JwtFilter;
+import com.flowzapi.flowz_api_builder.security.RateLimitingFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -28,6 +29,7 @@ import java.util.Collections;
 public class SecurityConfig {
 
     private final JwtFilter jwtFilter;
+    private final RateLimitingFilter rateLimitingFilter;
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -39,12 +41,14 @@ public class SecurityConfig {
 
                 // 2. הגדרת חוקי גישה לנתיבים
                 .authorizeHttpRequests(auth -> auth
+                        .requestMatchers(org.springframework.http.HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers("/auth/register", "/auth/login", "/auth/google", "/ws-flow/**").permitAll() // נתיבי הרשמה ולוגין פתוחים לכולם
                         .anyRequest().authenticated() // כל שאר ה-Endpoints באפליקציה דורשים יוזר מחובר
                 )
 
                 // 3. הזרקת ה-JWT Filter שלנו לפני הפילטר הסטנדרטי של Username/Password
-                .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
+                .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterAfter(rateLimitingFilter, JwtFilter.class);
 
         return http.build();
     }
