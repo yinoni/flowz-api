@@ -22,7 +22,7 @@ public class JwtService {
     private final Algorithm algorithm = Algorithm.HMAC256(SECRET_KEY);
 
 
-    private final long EXPIRATION_TIME = 1000 * 60 * 60 * 24;
+    private final long EXPIRATION_TIME = java.time.Duration.ofMinutes(1).toMillis();
 
     public String generateToken(CustomUserDetails user) {
         return JWT.create()

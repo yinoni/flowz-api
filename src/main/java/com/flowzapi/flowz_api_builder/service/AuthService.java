@@ -2,9 +2,11 @@ package com.flowzapi.flowz_api_builder.service;
 
 import com.flowzapi.flowz_api_builder.exception.AuthenticationException;
 import com.flowzapi.flowz_api_builder.exception.InvalidVerificationException;
+import com.flowzapi.flowz_api_builder.exception.UserNotAllowedException;
 import com.flowzapi.flowz_api_builder.jwt.JwtService;
 import com.flowzapi.flowz_api_builder.model.User;
 import com.flowzapi.flowz_api_builder.model.authentication.AuthenticationRequest;
+import com.flowzapi.flowz_api_builder.model.authentication.AuthenticationResponse;
 import com.flowzapi.flowz_api_builder.model.authentication.SignUpRequest;
 import com.flowzapi.flowz_api_builder.model.user.CustomUserDetails;
 import com.flowzapi.flowz_api_builder.model.user.UserDTO;
@@ -19,11 +21,9 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import tools.jackson.databind.ObjectMapper;
 
-import java.util.Map;
-import java.util.Optional;
-import java.util.Random;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
 
 import static com.flowzapi.flowz_api_builder.model.UserBuilder.anUser;
@@ -37,10 +37,12 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final RedisTemplate redisTemplate;
     private final String VERIFICATION_KEY_REDIS = "verificationKey:";
+    private final String REDIS_REFRESH_TOKEN = "refreshToken:";
     private final EmailService emailService;
+    private final ObjectMapper objectMapper;
 
 
-    public String login(AuthenticationRequest request) throws AuthenticationException {
+    public AuthenticationResponse login(AuthenticationRequest request) throws AuthenticationException {
 
         Authentication authentication = authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(request.getEmail(), request.getPassword())
@@ -57,12 +59,13 @@ public class AuthService {
             }
         }
 
-        String token = jwtService.generateToken(customUserDetails);
+        String accessToken = jwtService.generateToken(customUserDetails);
+        String refreshToken = createRefreshToken(customUserDetails.getId());
 
-        return token;
+        return new AuthenticationResponse(refreshToken, accessToken);
     }
 
-    public String signup(SignUpRequest request, boolean withGoogle){
+    public AuthenticationResponse signup(SignUpRequest request, boolean withGoogle){
         Optional<User> lookupUser = userRepository.findByEmail(request.getEmail());
 
         if(lookupUser.isPresent())
@@ -81,11 +84,46 @@ public class AuthService {
         if(!withGoogle)
             sendVerificationCode(newUser.getId(), newUser.getEmail());
 
+        String accessToken = jwtService.generateToken(newUser);
+        String refreshToken = createRefreshToken(newUser.getId());
 
+        return new AuthenticationResponse(refreshToken, accessToken);
+    }
 
-        String jwtToken = jwtService.generateToken(newUser);
+    private String createRefreshToken(String userId){
+        String refreshToken = UUID.randomUUID().toString();
+        String redisKey = REDIS_REFRESH_TOKEN + refreshToken;
 
-        return jwtToken;
+        redisTemplate.opsForValue().set(redisKey, userId, 30, TimeUnit.DAYS);
+
+        return refreshToken + ":" + userId;
+    }
+
+    public String refresh(String clientRefreshToken){
+
+        if (clientRefreshToken == null || clientRefreshToken.isEmpty()) {
+            throw new AuthenticationException("Refresh token is missing!", HttpStatus.BAD_REQUEST);
+        }
+
+        String[] splitRefreshToken = clientRefreshToken.split(":");
+        if(splitRefreshToken.length != 2)
+            throw new AuthenticationException("Invalid refresh token!", HttpStatus.BAD_REQUEST);
+
+        String refreshToken = splitRefreshToken[0];
+        String userId = splitRefreshToken[1];
+
+        validateRefreshToken(refreshToken, userId);
+        User user = userRepository.findById(userId).orElseThrow(() -> new UserNotAllowedException("User not found!"));
+
+        return jwtService.generateToken(user);
+    }
+
+    private void validateRefreshToken(String refreshToken, String userId){
+        String redisKey = REDIS_REFRESH_TOKEN + refreshToken;
+        String redisValue = (String) redisTemplate.opsForValue().get(redisKey);
+
+        if(redisValue == null || !redisValue.equals(userId))
+            throw new AuthenticationException("Refresh token expired or invalid!", HttpStatus.UNAUTHORIZED);
     }
 
     private void sendVerificationCode(String userId, String email){
@@ -95,7 +133,7 @@ public class AuthService {
         emailService.sendVerificationEmail(email, verificationCode);
     }
 
-    public String authenticateWithGoogle(Map<String, String> userData){
+    public AuthenticationResponse authenticateWithGoogle(Map<String, String> userData){
         String email = userData.get("email");
         String username = userData.get("username");
         String password = UUID.randomUUID().toString();
@@ -103,8 +141,12 @@ public class AuthService {
 
         if(lookupUser.isPresent()) {
             User user = lookupUser.get();
-            if(user.isWithGoogle())
-                return jwtService.generateToken(user);
+            if(user.isWithGoogle()){
+                String accessToken = jwtService.generateToken(user);
+                String refreshToken = createRefreshToken(user.getId());
+                return new AuthenticationResponse(refreshToken, accessToken);
+            }
+
             else{
                 throw new AuthenticationException("Invalid email or password!", HttpStatus.UNAUTHORIZED);
             }
