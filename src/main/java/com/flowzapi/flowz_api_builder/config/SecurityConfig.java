@@ -14,6 +14,7 @@ import org.springframework.security.config.annotation.web.configurers.AbstractHt
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfiguration;
@@ -30,6 +31,7 @@ public class SecurityConfig {
 
     private final JwtFilter jwtFilter;
     private final RateLimitingFilter rateLimitingFilter;
+    private final AuthenticationEntryPoint authenticationEntryPoint;
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -38,11 +40,13 @@ public class SecurityConfig {
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-
+                .exceptionHandling(exception -> exception
+                        .authenticationEntryPoint(authenticationEntryPoint) // מגדיר את ה-401 המותאם שלנו
+                )
                 // 2. הגדרת חוקי גישה לנתיבים
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(org.springframework.http.HttpMethod.OPTIONS, "/**").permitAll()
-                        .requestMatchers("/auth/register", "/auth/login", "/auth/google", "/ws-flow/**").permitAll() // נתיבי הרשמה ולוגין פתוחים לכולם
+                        .requestMatchers("/auth/register", "/auth/login", "/auth/google", "/auth/refresh", "/ws-flow/**").permitAll() // נתיבי הרשמה ולוגין פתוחים לכולם
                         .anyRequest().authenticated() // כל שאר ה-Endpoints באפליקציה דורשים יוזר מחובר
                 )
 

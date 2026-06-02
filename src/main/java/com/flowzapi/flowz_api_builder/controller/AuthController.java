@@ -1,7 +1,9 @@
 package com.flowzapi.flowz_api_builder.controller;
 
+import com.flowzapi.flowz_api_builder.exception.AuthenticationException;
 import com.flowzapi.flowz_api_builder.jwt.JwtService;
 import com.flowzapi.flowz_api_builder.model.authentication.AuthenticationRequest;
+import com.flowzapi.flowz_api_builder.model.authentication.AuthenticationResponse;
 import com.flowzapi.flowz_api_builder.model.authentication.SignUpRequest;
 import com.flowzapi.flowz_api_builder.model.authentication.VerificationRequest;
 import com.flowzapi.flowz_api_builder.model.user.CustomUserDetails;
@@ -13,7 +15,9 @@ import com.google.api.client.googleapis.auth.oauth2.GoogleIdToken;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -21,11 +25,9 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.stereotype.Controller;
-import org.springframework.web.bind.annotation.CrossOrigin;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.*;
 
+import java.time.Duration;
 import java.util.Map;
 
 @Controller
@@ -40,16 +42,24 @@ public class AuthController {
 
     @PostMapping("/login")
     public ResponseEntity<?> login(@Valid @RequestBody AuthenticationRequest request) {
-        String token = authService.login(request);
+        AuthenticationResponse response = authService.login(request);
 
-        return ResponseEntity.ok(token);
+        ResponseCookie refreshTokenCookie = generateResponseCookie(response.getRefreshToken());
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.SET_COOKIE, refreshTokenCookie.toString())
+                .body(response.getAccessToken());
     }
 
     @PostMapping("/register")
     public ResponseEntity<?> signup(@Valid @RequestBody SignUpRequest request) {
-        String token = authService.signup(request, false);
+        AuthenticationResponse response = authService.signup(request, false);
 
-        return ResponseEntity.ok(token);
+        ResponseCookie refreshTokenCookie = generateResponseCookie(response.getRefreshToken());
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.SET_COOKIE, refreshTokenCookie.toString())
+                .body(response.getAccessToken());
     }
 
     @PostMapping("/google")
@@ -65,9 +75,13 @@ public class AuthController {
         String email = payload.getEmail();
         String name = (String) payload.get("name");
 
-        String token = authService.authenticateWithGoogle(Map.of("email", email, "username", name));
+        AuthenticationResponse response = authService.authenticateWithGoogle(Map.of("email", email, "username", name));
 
-        return ResponseEntity.ok(token);
+        ResponseCookie refreshTokenCookie = generateResponseCookie(response.getRefreshToken());
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.SET_COOKIE, refreshTokenCookie.toString())
+                .body(response.getAccessToken());
     }
 
     @PostMapping("/validate-code")
@@ -82,5 +96,24 @@ public class AuthController {
         authService.resendVerificationCode(customUserDetails.getId(), customUserDetails.getEmail());
 
         return ResponseEntity.ok("Sent verification code.");
+    }
+
+    @PostMapping("/refresh")
+    public ResponseEntity<?> refreshToken(@CookieValue(name = "refresh_token", required = false) String clientRefreshToken) {
+        System.out.println("Refresh Token: " + clientRefreshToken);
+
+        String newAccessToken = authService.refresh(clientRefreshToken);
+
+        return ResponseEntity.ok(newAccessToken);
+    }
+
+    private ResponseCookie generateResponseCookie(String refreshToken) {
+        return ResponseCookie.from("refresh_token", refreshToken)
+                .httpOnly(true)
+                .secure(false)
+                .path("/auth")
+                .maxAge(Duration.ofDays(30))
+                .sameSite("Lax")
+                .build();
     }
 }
