@@ -10,6 +10,7 @@ import com.flowzapi.flowz_api_builder.service.AuthService;
 import com.flowzapi.flowz_api_builder.service.GoogleAuthService;
 import com.flowzapi.flowz_api_builder.service.UserService;
 import com.google.api.client.googleapis.auth.oauth2.GoogleIdToken;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -38,14 +39,14 @@ public class AuthController {
 
 
     @PostMapping("/login")
-    public ResponseEntity<?> login(@RequestBody AuthenticationRequest request) {
+    public ResponseEntity<?> login(@Valid @RequestBody AuthenticationRequest request) {
         String token = authService.login(request);
 
         return ResponseEntity.ok(token);
     }
 
     @PostMapping("/register")
-    public ResponseEntity<?> signup(@RequestBody SignUpRequest request) {
+    public ResponseEntity<?> signup(@Valid @RequestBody SignUpRequest request) {
         String token = authService.signup(request, false);
 
         return ResponseEntity.ok(token);
@@ -70,7 +71,7 @@ public class AuthController {
     }
 
     @PostMapping("/validate-code")
-    public ResponseEntity<?> validateVerificationCode(@RequestBody VerificationRequest verificationRequest, @AuthenticationPrincipal CustomUserDetails customUserDetails) {
+    public ResponseEntity<?> validateVerificationCode(@Valid @RequestBody VerificationRequest verificationRequest, @AuthenticationPrincipal CustomUserDetails customUserDetails) {
         String token = authService.validateVerificationCode(verificationRequest.getCode(), customUserDetails.getId());
 
         return ResponseEntity.ok(token);

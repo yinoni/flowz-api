@@ -10,6 +10,7 @@ import com.flowzapi.flowz_api_builder.model.flow.FlowInput;
 import com.flowzapi.flowz_api_builder.model.flow.FlowTestResponse;
 import com.flowzapi.flowz_api_builder.model.user.CustomUserDetails;
 import com.flowzapi.flowz_api_builder.service.FlowService;
+import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -36,7 +37,7 @@ public class FlowController {
     }
 
     @PostMapping("")
-    public ResponseEntity<FlowDTO> createFlow(@RequestBody FlowInput flowInput, @AuthenticationPrincipal CustomUserDetails customUserDetails) {
+    public ResponseEntity<FlowDTO> createFlow(@Valid @RequestBody FlowInput flowInput, @AuthenticationPrincipal CustomUserDetails customUserDetails) {
         FlowDTO flowDTO = flowService.createFlow(flowInput, customUserDetails.getId());
 
         return ResponseEntity.ok(flowDTO);
@@ -49,7 +50,7 @@ public class FlowController {
     }
 
     @PatchMapping("")
-    public ResponseEntity<?> editFlow(@RequestBody FlowEditInput flowEditInput, @AuthenticationPrincipal CustomUserDetails customUserDetails) {
+    public ResponseEntity<?> editFlow(@Valid @RequestBody FlowEditInput flowEditInput, @AuthenticationPrincipal CustomUserDetails customUserDetails) {
         flowService.editFlow(flowEditInput, customUserDetails.getId());
         return ResponseEntity.ok("Flow edited");
     }
@@ -86,17 +87,5 @@ public class FlowController {
 
         return ResponseEntity.ok("step added");
     }
-
-    /*
-    @PostMapping("/execute/{flowId}")
-    public ResponseEntity<FlowTestResponse> executeTemp(@PathVariable String flowId, @AuthenticationPrincipal CustomUserDetails customUserDetails) {
-        FlowTestResponse testResponse = flowService.executeSteps(flowId, customUserDetails.getId());
-        if(testResponse.isTestPassed() && testResponse.getStatus().equals("COMPLETED"))
-            return ResponseEntity.ok(testResponse);
-
-        return new ResponseEntity<>(testResponse, HttpStatus.ACCEPTED);
-    }
-
-     */
 
 }

@@ -136,7 +136,6 @@ public class FlowExecutionService {
     public FlowTestResponse executeSteps(String flowId, String userId, String executionID){
         Flow lookupFlow = this.findById(flowId);
         Map<String, Object> flowContent = new HashMap<>();
-        int stepNumber = 1;
 
         isUserAllowed(lookupFlow.getOwnerId(), userId);
 
@@ -166,8 +165,16 @@ public class FlowExecutionService {
                 boolean haveStatusAssertion = step.getAssertions() != null && step.getAssertions().containsKey("status");
                 int resStatusCode = response.statusCode();
 
-                if(!haveStatusAssertion && !(resStatusCode >= 200 && resStatusCode <= 299))
+                if(!haveStatusAssertion && !(resStatusCode >= 200 && resStatusCode <= 299)){
+                    messagingTemplate.convertAndSend(SOCKET_TOPIC_DESTINATION + executionID, (Object) Map.of(
+                            "status", "STEP_FAILED",
+                            "success", false,
+                            "message", "'" + step.getTitle() + "' Test Failed!\n   " + response.body(),
+                            step.getId(), false
+                    ));
                     return new FlowTestResponse("FLOW_FAILED", "The response returned with status code: " + resStatusCode,false);
+
+                }
 
                 mappedBody.put("status", resStatusCode);
                 flowContent.putAll(extractBody(mappedBody, step.getExtract(), step.getAssertions()));
@@ -178,7 +185,6 @@ public class FlowExecutionService {
                         "message", "'" + step.getTitle() + "' Test Passed!",
                         step.getId(), true
                 ));
-                stepNumber++;
             } catch (Exception e) {
                 messagingTemplate.convertAndSend(SOCKET_TOPIC_DESTINATION + executionID, (Object) Map.of(
                         "status", "STEP_FAILED",
