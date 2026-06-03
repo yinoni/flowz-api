@@ -176,11 +176,11 @@ public class AuthService {
         return jwtService.generateToken(user);
     }
 
-    public void resendVerificationCode(String userId, String email){
+    public void resendVerificationCode(String userId, String email) {
         String redisKey = VERIFICATION_KEY_REDIS + userId;
         String valueFromRedis = (String) redisTemplate.opsForValue().get(redisKey);
 
-        if(valueFromRedis != null)
+        if (valueFromRedis != null)
             throw new InvalidVerificationException("The verification code has not expired!");
 
         sendVerificationCode(userId, email);
@@ -191,5 +191,21 @@ public class AuthService {
     public String generate4DigitCode(){
         int code = new Random().nextInt(10000);
         return String.format("%04d", code);
+    }
+
+    public void logout(String userId, String clientRefreshToken){
+        if (clientRefreshToken == null || clientRefreshToken.isEmpty()) {
+            return;
+        }
+
+        String[] splitRefreshToken = clientRefreshToken.split(":");
+        if(splitRefreshToken.length != 2)
+            throw new AuthenticationException("Invalid refresh token!", HttpStatus.BAD_REQUEST);
+
+        String refreshToken = splitRefreshToken[0];
+        validateRefreshToken(refreshToken, userId);
+
+        redisTemplate.delete(REDIS_REFRESH_TOKEN + refreshToken);
+
     }
 }

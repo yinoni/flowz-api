@@ -44,7 +44,7 @@ public class AuthController {
     public ResponseEntity<?> login(@Valid @RequestBody AuthenticationRequest request) {
         AuthenticationResponse response = authService.login(request);
 
-        ResponseCookie refreshTokenCookie = generateResponseCookie(response.getRefreshToken());
+        ResponseCookie refreshTokenCookie = generateResponseCookie(response.getRefreshToken(), 30);
 
         return ResponseEntity.ok()
                 .header(HttpHeaders.SET_COOKIE, refreshTokenCookie.toString())
@@ -55,7 +55,7 @@ public class AuthController {
     public ResponseEntity<?> signup(@Valid @RequestBody SignUpRequest request) {
         AuthenticationResponse response = authService.signup(request, false);
 
-        ResponseCookie refreshTokenCookie = generateResponseCookie(response.getRefreshToken());
+        ResponseCookie refreshTokenCookie = generateResponseCookie(response.getRefreshToken(), 30);
 
         return ResponseEntity.ok()
                 .header(HttpHeaders.SET_COOKIE, refreshTokenCookie.toString())
@@ -77,7 +77,7 @@ public class AuthController {
 
         AuthenticationResponse response = authService.authenticateWithGoogle(Map.of("email", email, "username", name));
 
-        ResponseCookie refreshTokenCookie = generateResponseCookie(response.getRefreshToken());
+        ResponseCookie refreshTokenCookie = generateResponseCookie(response.getRefreshToken(), 30);
 
         return ResponseEntity.ok()
                 .header(HttpHeaders.SET_COOKIE, refreshTokenCookie.toString())
@@ -107,12 +107,22 @@ public class AuthController {
         return ResponseEntity.ok(newAccessToken);
     }
 
-    private ResponseCookie generateResponseCookie(String refreshToken) {
+    @PostMapping("/logout")
+    public ResponseEntity<?> logout(@CookieValue(name = "refresh_token", required = false) String clientRefreshToken, @AuthenticationPrincipal CustomUserDetails customUserDetails) {
+        authService.logout(customUserDetails.getId(), clientRefreshToken);
+        ResponseCookie refreshTokenCookie = generateResponseCookie("", 0);
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.SET_COOKIE, refreshTokenCookie.toString())
+                .body("Logged out");
+    }
+
+    private ResponseCookie generateResponseCookie(String refreshToken, int age) {
         return ResponseCookie.from("refresh_token", refreshToken)
                 .httpOnly(true)
                 .secure(false)
                 .path("/auth")
-                .maxAge(Duration.ofDays(30))
+                .maxAge(Duration.ofDays(age))
                 .sameSite("Lax")
                 .build();
     }
