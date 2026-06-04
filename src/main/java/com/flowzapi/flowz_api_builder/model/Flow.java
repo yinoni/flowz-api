@@ -23,6 +23,7 @@ public class Flow {
     private String globalURL;
     private Map<String, Object> globalVariables;
     private Map<String, String> globalHeaders;
+    private Map<String, Object> globalAssertions = new HashMap<>();
 
 
     public FlowDTO convertToDTO() {
@@ -33,6 +34,7 @@ public class Flow {
                 .withGlobalURL(this.globalURL)
                 .withGlobalVariables(this.globalVariables)
                 .withGlobalHeaders(this.globalHeaders)
+                .withGlobalAssertions(this.globalAssertions)
                 .build();
     }
 }

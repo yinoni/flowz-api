@@ -6,6 +6,8 @@ import com.flowzapi.flowz_api_builder.exception.UserNotAllowedException;
 import com.flowzapi.flowz_api_builder.model.Flow;
 import com.flowzapi.flowz_api_builder.model.Step;
 import com.flowzapi.flowz_api_builder.model.flow.FlowTestResponse;
+import com.flowzapi.flowz_api_builder.model.step.StepWSResponse;
+import com.flowzapi.flowz_api_builder.model.step.StepWSResponseBuilder;
 import com.flowzapi.flowz_api_builder.repos.FlowRepository;
 import com.flowzapi.flowz_api_builder.utils.JsonFlattener;
 import lombok.RequiredArgsConstructor;
@@ -14,6 +16,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
@@ -21,8 +24,11 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
+
+import static com.flowzapi.flowz_api_builder.model.step.StepWSResponseBuilder.aStepWSResponse;
 
 @Service
 @RequiredArgsConstructor
@@ -35,6 +41,9 @@ public class FlowExecutionService {
     private JsonFlattener flattener = new JsonFlattener();
     private final SimpMessagingTemplate messagingTemplate;
     private final String SOCKET_TOPIC_DESTINATION = "/flow-events/";
+    private final HttpClient client = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(10))
+            .build();
 
     public Flow findById(String flowId) {
         return flowRepository.findById(flowId)
@@ -138,10 +147,27 @@ public class FlowExecutionService {
         Map<String, Object> flowContent = new HashMap<>();
 
         isUserAllowed(lookupFlow.getOwnerId(), userId);
-
+        StepWSResponseBuilder stepWSResponseBuilder = aStepWSResponse();
         for (Step step : lookupFlow.getSteps()) {
             try {
-                HttpClient client = HttpClient.newHttpClient();
+                stepWSResponseBuilder
+                        .withStepId(step.getId())
+                        .withMessage("'" + step.getTitle() + "' Test Passed!")
+                        .withStatus("STEP_PASSED")
+                        .withSuccess(true);
+
+                Map<String, Object> activeAssertions = new HashMap<>();
+
+                if (lookupFlow.getGlobalAssertions() != null) {
+                    activeAssertions = objectMapper.convertValue(
+                            lookupFlow.getGlobalAssertions(),
+                            new TypeReference<Map<String, Object>>() {}
+                    );
+                }
+
+                if (step.getAssertions() != null) {
+                    activeAssertions.putAll(step.getAssertions());
+                }
 
                 HttpRequest request = buildRequest(step, flowContent, lookupFlow);
 
@@ -162,36 +188,28 @@ public class FlowExecutionService {
                     }
                 }
 
-                boolean haveStatusAssertion = step.getAssertions() != null && step.getAssertions().containsKey("status");
+                boolean haveStatusAssertion = activeAssertions.containsKey("status");
                 int resStatusCode = response.statusCode();
 
                 if(!haveStatusAssertion && !(resStatusCode >= 200 && resStatusCode <= 299)){
-                    messagingTemplate.convertAndSend(SOCKET_TOPIC_DESTINATION + executionID, (Object) Map.of(
-                            "status", "STEP_FAILED",
-                            "success", false,
-                            "message", "'" + step.getTitle() + "' Test Failed!\n   " + response.body(),
-                            step.getId(), false
-                    ));
+                    stepWSResponseBuilder.withStatus("STEP_FAILED")
+                            .withMessage("'" + step.getTitle() + "' Test Failed!\n   " + response.body())
+                            .withSuccess(false);
+
+                    sendWSForStep(stepWSResponseBuilder.build(), executionID);
                     return new FlowTestResponse("FLOW_FAILED", "The response returned with status code: " + resStatusCode,false);
 
                 }
 
                 mappedBody.put("status", resStatusCode);
-                flowContent.putAll(extractBody(mappedBody, step.getExtract(), step.getAssertions()));
+                flowContent.putAll(extractBody(mappedBody, step.getExtract(), activeAssertions));
 
-                messagingTemplate.convertAndSend(SOCKET_TOPIC_DESTINATION + executionID, (Object) Map.of(
-                        "status", "STEP_PASSED",
-                        "success", true,
-                        "message", "'" + step.getTitle() + "' Test Passed!",
-                        step.getId(), true
-                ));
+                sendWSForStep(stepWSResponseBuilder.build(), executionID);
             } catch (Exception e) {
-                messagingTemplate.convertAndSend(SOCKET_TOPIC_DESTINATION + executionID, (Object) Map.of(
-                        "status", "STEP_FAILED",
-                        "success", false,
-                        "message", "'" + step.getTitle() + "' Test Failed!\n   " + e.getMessage(),
-                        step.getId(), false
-                ));
+                stepWSResponseBuilder.withStatus("STEP_FAILED")
+                        .withMessage("'" + step.getTitle() + "' Test Failed!\n   " + e.getMessage())
+                        .withSuccess(false);
+                sendWSForStep(stepWSResponseBuilder.build(), executionID);
                 return new FlowTestResponse("FLOW_FAILED", "One of the steps got failed", false);
             }
         }
@@ -294,6 +312,15 @@ public class FlowExecutionService {
         }
 
         return extractedBody;
+    }
+
+    private void sendWSForStep(StepWSResponse stepResponse, String executionID){
+        messagingTemplate.convertAndSend(SOCKET_TOPIC_DESTINATION + executionID, (Object) Map.of(
+                "status", stepResponse.getStatus(),
+                "success", stepResponse.isSuccess(),
+                "message", stepResponse.getMessage(),
+                stepResponse.getStepId(), stepResponse.isSuccess()
+        ));
     }
 
 

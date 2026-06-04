@@ -41,8 +41,8 @@ public class ProjectController {
         return ResponseEntity.ok(projectService.updateProject(projectInput, customUserDetails.getId()));
     }
 
-    @DeleteMapping("")
-    public ResponseEntity<?> deleteProject(@RequestParam String projectId, @AuthenticationPrincipal CustomUserDetails customUserDetails) {
+    @DeleteMapping("/{projectId}")
+    public ResponseEntity<?> deleteProject(@PathVariable String projectId, @AuthenticationPrincipal CustomUserDetails customUserDetails) {
         projectService.deleteProject(projectId, customUserDetails.getId());
         return ResponseEntity.ok("project deleted");
     }
