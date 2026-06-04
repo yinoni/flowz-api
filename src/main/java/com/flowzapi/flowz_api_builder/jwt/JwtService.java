@@ -4,10 +4,12 @@ import com.auth0.jwt.JWT;
 import com.auth0.jwt.JWTVerifier;
 import com.auth0.jwt.algorithms.Algorithm;
 import com.auth0.jwt.exceptions.JWTVerificationException;
+import com.auth0.jwt.interfaces.Claim;
 import com.auth0.jwt.interfaces.DecodedJWT;
 import com.flowzapi.flowz_api_builder.model.User;
 import com.flowzapi.flowz_api_builder.model.user.CustomUserDetails;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import javax.crypto.SecretKey;
@@ -19,10 +21,20 @@ public class JwtService {
 
     private final String SECRET_KEY = "my_super_secret_key_that_should_be_long_and_stored_in_application_properties";
 
-    private final Algorithm algorithm = Algorithm.HMAC256(SECRET_KEY);
+    private final Algorithm algorithm;
 
+    private final JWTVerifier verifier;
 
-    private final long EXPIRATION_TIME = java.time.Duration.ofMinutes(1).toMillis();
+    public JwtService(@Value("${jwt.secret}") String secret) {
+        this.algorithm = Algorithm.HMAC256(secret);
+
+        // בנייה חד-פעמית של שומר הסף של הטוקנים
+        this.verifier = JWT.require(algorithm)
+                .withIssuer("flowz-api")
+                .build();
+    }
+
+    private final long EXPIRATION_TIME = java.time.Duration.ofMinutes(15).toMillis();
 
     public String generateToken(CustomUserDetails user) {
         return JWT.create()
@@ -51,9 +63,24 @@ public class JwtService {
     // 2. אימות וחילוץ שם המשתמש מהטוקן
     public String validateTokenAndGetEmail(String token) {
         try {
-            JWTVerifier verifier = JWT.require(algorithm).withIssuer("flowz-api").build();
             DecodedJWT decodedJWT = verifier.verify(token);
             return decodedJWT.getSubject();
+        } catch (JWTVerificationException exception) {
+            return null; // הטוקן פג תוקף או מזויף
+        }
+    }
+
+    public <T> T extractClaim(String token, String claimName, Class<T> clazz) {
+        try {
+            DecodedJWT decodedJWT = verifier.verify(token);
+            Claim claim = decodedJWT.getClaim(claimName);
+
+            if (claim.isNull()) {
+                return null;
+            }
+
+            return claim.as(clazz);
+
         } catch (JWTVerificationException exception) {
             return null; // הטוקן פג תוקף או מזויף
         }

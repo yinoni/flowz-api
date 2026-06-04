@@ -19,6 +19,8 @@ public class FlowDTO {
     private String globalURL;
     private Map<String, Object> globalVariables;
     private Map<String, String> globalHeaders;
+    private Map<String, Object> globalAssertions;
+
 
 
 

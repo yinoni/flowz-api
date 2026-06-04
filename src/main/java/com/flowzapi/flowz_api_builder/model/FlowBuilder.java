@@ -12,6 +12,7 @@ public final class FlowBuilder {
     private String globalURL;
     private Map<String, Object> globalVariables;
     private Map<String, String> globalHeaders;
+    private Map<String, Object> globalAssertions;
 
     private FlowBuilder() {
     }
@@ -60,6 +61,11 @@ public final class FlowBuilder {
         return this;
     }
 
+    public FlowBuilder withGlobalAssertions(Map<String, Object> globalAssertions) {
+        this.globalAssertions = globalAssertions;
+        return this;
+    }
+
     public Flow build() {
         Flow flow = new Flow();
         flow.setId(id);
@@ -70,6 +76,7 @@ public final class FlowBuilder {
         flow.setGlobalURL(globalURL);
         flow.setGlobalVariables(globalVariables);
         flow.setGlobalHeaders(globalHeaders);
+        flow.setGlobalAssertions(globalAssertions);
         return flow;
     }
 }
