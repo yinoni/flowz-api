@@ -1,16 +1,4 @@
 services:
-  mongo-db:
-    image: mongo:7.0  # מומלץ להשתמש בגרסה כללית יציבה
-    container_name: flowz_mongo
-    restart: always
-    ports:
-      - "27017:27017"  # חושף את מונגו למחשב שלך (בשביל IntelliJ ו-Mongo Compass)
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: ${MONGODB_USER}
-      MONGO_INITDB_ROOT_PASSWORD: ${MONGODB_PASS}
-      MONGO_INITDB_DATABASE: ${MONGODB_DB_NAME}
-    volumes:
-      - mongo_data:/data/db  # 🌟 קריטי: שומר את המידע על הדיסק של המחשב שלך
   redis-cache:
     image: redis
     container_name: flowz_redis
@@ -22,5 +10,4 @@ services:
     command: redis-server --appendonly yes
 
 volumes:
-  mongo_data:  # מגדיר את ה-Volume ברמת הקובץ
   redis_data:

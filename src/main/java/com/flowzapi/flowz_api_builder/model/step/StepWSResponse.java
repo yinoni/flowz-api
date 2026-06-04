@@ -12,4 +12,5 @@ public class StepWSResponse {
     private String message;
     private String status;
     private boolean success;
+    private String response;
 }
