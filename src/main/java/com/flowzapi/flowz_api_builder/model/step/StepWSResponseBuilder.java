@@ -5,6 +5,7 @@ public final class StepWSResponseBuilder {
     private String message;
     private String status;
     private boolean success;
+    private String response;
 
     private StepWSResponseBuilder() {
     }
@@ -33,12 +34,18 @@ public final class StepWSResponseBuilder {
         return this;
     }
 
+    public StepWSResponseBuilder withResponse(String response) {
+        this.response = response;
+        return this;
+    }
+
     public StepWSResponse build() {
         StepWSResponse stepWSResponse = new StepWSResponse();
         stepWSResponse.setStepId(stepId);
         stepWSResponse.setMessage(message);
         stepWSResponse.setStatus(status);
         stepWSResponse.setSuccess(success);
+        stepWSResponse.setResponse(response);
         return stepWSResponse;
     }
 }

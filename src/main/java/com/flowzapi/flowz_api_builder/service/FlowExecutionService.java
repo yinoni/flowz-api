@@ -192,6 +192,7 @@ public class FlowExecutionService {
 
                 boolean haveStatusAssertion = activeAssertions.containsKey("status");
                 int resStatusCode = response.statusCode();
+                stepWSResponseBuilder.withResponse(response.body());
 
                 if(!haveStatusAssertion && !(resStatusCode >= 200 && resStatusCode <= 299)){
                     stepWSResponseBuilder.withStatus("STEP_FAILED")
@@ -210,7 +211,8 @@ public class FlowExecutionService {
             } catch (Exception e) {
                 stepWSResponseBuilder.withStatus("STEP_FAILED")
                         .withMessage("'" + step.getTitle() + "' Test Failed!\n   " + e.getMessage())
-                        .withSuccess(false);
+                        .withSuccess(false)
+                        .withResponse(e.getMessage());
                 sendWSForStep(stepWSResponseBuilder.build(), executionID);
                 return new FlowTestResponse("FLOW_FAILED", "One of the steps got failed", false);
             }
@@ -321,7 +323,8 @@ public class FlowExecutionService {
                 "status", stepResponse.getStatus(),
                 "success", stepResponse.isSuccess(),
                 "message", stepResponse.getMessage(),
-                stepResponse.getStepId(), stepResponse.isSuccess()
+                stepResponse.getStepId(), stepResponse.isSuccess(),
+                "response", stepResponse.getResponse()
         ));
     }
 
