@@ -145,6 +145,8 @@ public class FlowExecutionService {
     public FlowTestResponse executeSteps(String flowId, String userId, String executionID){
         Flow lookupFlow = this.findById(flowId);
         Map<String, Object> flowContent = new HashMap<>();
+        if(lookupFlow.getGlobalVariables() != null)
+            flowContent.putAll(lookupFlow.getGlobalVariables());
 
         isUserAllowed(lookupFlow.getOwnerId(), userId);
         StepWSResponseBuilder stepWSResponseBuilder = aStepWSResponse();
