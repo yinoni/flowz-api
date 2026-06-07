@@ -1,5 +1,6 @@
 package com.flowzapi.flowz_api_builder.model;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 
@@ -13,6 +14,7 @@ public final class FlowBuilder {
     private Map<String, Object> globalVariables;
     private Map<String, String> globalHeaders;
     private Map<String, Object> globalAssertions;
+    private Instant lastModified;
 
     private FlowBuilder() {
     }
@@ -66,6 +68,11 @@ public final class FlowBuilder {
         return this;
     }
 
+    public FlowBuilder withLastModified(Instant lastModified) {
+        this.lastModified = lastModified;
+        return this;
+    }
+
     public Flow build() {
         Flow flow = new Flow();
         flow.setId(id);
@@ -77,6 +84,7 @@ public final class FlowBuilder {
         flow.setGlobalVariables(globalVariables);
         flow.setGlobalHeaders(globalHeaders);
         flow.setGlobalAssertions(globalAssertions);
+        flow.setLastModified(lastModified);
         return flow;
     }
 }

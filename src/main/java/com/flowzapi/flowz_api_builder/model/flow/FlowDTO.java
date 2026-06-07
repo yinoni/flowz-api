@@ -5,6 +5,8 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.time.Instant;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -20,6 +22,7 @@ public class FlowDTO {
     private Map<String, Object> globalVariables;
     private Map<String, String> globalHeaders;
     private Map<String, Object> globalAssertions;
+    private Instant lastModified;
 
 
 

@@ -1,5 +1,6 @@
 package com.flowzapi.flowz_api_builder.model.flow;
 
+import java.time.Instant;
 import java.util.Map;
 
 public final class FlowDTOBuilder {
@@ -10,6 +11,7 @@ public final class FlowDTOBuilder {
     private Map<String, Object> globalVariables;
     private Map<String, String> globalHeaders;
     private Map<String, Object> globalAssertions;
+    private Instant lastModified;
 
     private FlowDTOBuilder() {
     }
@@ -53,6 +55,11 @@ public final class FlowDTOBuilder {
         return this;
     }
 
+    public FlowDTOBuilder withLastModified(Instant lastModified) {
+        this.lastModified = lastModified;
+        return this;
+    }
+
     public FlowDTO build() {
         FlowDTO flowDTO = new FlowDTO();
         flowDTO.setId(id);
@@ -62,6 +69,7 @@ public final class FlowDTOBuilder {
         flowDTO.setGlobalVariables(globalVariables);
         flowDTO.setGlobalHeaders(globalHeaders);
         flowDTO.setGlobalAssertions(globalAssertions);
+        flowDTO.setLastModified(lastModified);
         return flowDTO;
     }
 }

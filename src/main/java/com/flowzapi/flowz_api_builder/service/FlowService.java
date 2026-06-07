@@ -25,6 +25,8 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.time.Instant;
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -65,6 +67,8 @@ public class FlowService {
                 .withGlobalURL(flowInput.getGlobalURL())
                 .withGlobalVariables(flowInput.getGlobalVariables())
                 .withGlobalHeaders(flowInput.getGlobalHeaders())
+                .withGlobalAssertions(new HashMap<>())
+                .withLastModified(Instant.now())
                 .build();
 
         return flowRepository.save(flow).convertToDTO();
@@ -127,7 +131,8 @@ public class FlowService {
         step.setId(stepUUID);
 
         Query query = new Query(Criteria.where("id").is(flowId));
-        Update update = new Update().push("steps", step);
+        Update update = new Update().push("steps", step)
+                .set("lastModified", Instant.now());
 
         mongoTemplate.updateFirst(query, update, Flow.class);
     }
@@ -160,7 +165,8 @@ public class FlowService {
         isUserAllowed(stepsProjection.getOwnerId(), userId);
 
         Query query = new Query(Criteria.where("id").is(flowId));
-        Update update = new Update().pull("steps", Query.query(Criteria.where("id").is(stepId)));
+        Update update = new Update().pull("steps", Query.query(Criteria.where("id").is(stepId)))
+                .set("lastModified", Instant.now());
 
         mongoTemplate.updateFirst(query, update, Flow.class);
 
@@ -173,7 +179,8 @@ public class FlowService {
         Query query = new Query(Criteria.where("id").is(flowId).and("steps.id").is(step.getId()));
         Update update = new Update();
 
-        update.set("steps.$",  step);
+        update.set("steps.$",  step)
+                .set("lastModified", Instant.now());
 
         mongoTemplate.updateFirst(query, update, Flow.class);
     }
@@ -194,7 +201,8 @@ public class FlowService {
                 .set("flowName", flowEditInput.getFlowName())
                 .set("globalURL", flowEditInput.getGlobalURL())
                 .set("globalVariables", flowEditInput.getGlobalVariables())
-                .set("globalHeaders", flowEditInput.getGlobalHeaders());
+                .set("globalHeaders", flowEditInput.getGlobalHeaders())
+                .set("lastModified", Instant.now());
 
 
         mongoTemplate.updateFirst(query, update, Flow.class);
@@ -208,7 +216,8 @@ public class FlowService {
         String fieldName = setGlobalsRequest.getFieldName().toDbName();
 
         Query query = new Query(Criteria.where("id").is(flowId));
-        Update update = new Update().set(fieldName, setGlobalsRequest.getGlobals());
+        Update update = new Update().set(fieldName, setGlobalsRequest.getGlobals())
+                .set("lastModified", Instant.now());
 
         mongoTemplate.updateFirst(query, update, Flow.class);
         Flow flow = findById(flowId);
@@ -241,7 +250,8 @@ public class FlowService {
         }
 
         Query query = new Query(Criteria.where("id").is(flowId));
-        Update update = new Update().set("steps", newOrderSteps);
+        Update update = new Update().set("steps", newOrderSteps)
+                .set("lastModified", Instant.now());
 
         mongoTemplate.updateFirst(query, update, Flow.class);
     }

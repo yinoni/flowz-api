@@ -11,7 +11,7 @@ import org.springframework.data.mongodb.core.mapping.Document;
 import static com.flowzapi.flowz_api_builder.model.user.UserDTOBuilder.anUserDTO;
 
 @Data
-@Document(collection = "projects")
+@Document(collection = "users")
 @Getter
 @Setter
 @NoArgsConstructor

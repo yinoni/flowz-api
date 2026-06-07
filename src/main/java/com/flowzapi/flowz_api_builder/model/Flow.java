@@ -4,8 +4,11 @@ import com.flowzapi.flowz_api_builder.model.flow.FlowDTO;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.springframework.data.annotation.Id;
+import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.mongodb.core.mapping.Document;
 
+import java.time.Instant;
+import java.time.LocalDateTime;
 import java.util.*;
 
 import static com.flowzapi.flowz_api_builder.model.flow.FlowDTOBuilder.aFlowDTO;
@@ -23,7 +26,10 @@ public class Flow {
     private String globalURL;
     private Map<String, Object> globalVariables;
     private Map<String, String> globalHeaders;
-    private Map<String, Object> globalAssertions = new HashMap<>();
+    private Map<String, Object> globalAssertions;
+
+    @LastModifiedDate
+    private Instant lastModified;
 
 
     public FlowDTO convertToDTO() {
@@ -35,6 +41,7 @@ public class Flow {
                 .withGlobalVariables(this.globalVariables)
                 .withGlobalHeaders(this.globalHeaders)
                 .withGlobalAssertions(this.globalAssertions)
+                .withLastModified(this.lastModified)
                 .build();
     }
 }
