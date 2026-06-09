@@ -13,9 +13,10 @@ services:
       - MONGODB_URL=${MONGODB_URL}
       - REDIS_HOST=${REDIS_HOST}
       - REDIS_PORT=${REDIS_PORT}
-      - REDIS_PASSWORD=${REDIS_PASS} # כאן הוא נולד בתור REDIS_PASSWORD
+      - REDIS_PASS=${REDIS_PASS}
       - GOOGLE_OAUTH_ID=${GOOGLE_OAUTH_ID}
       - SMTP_USER=${SMTP_USER}
       - SMTP_PASS=${SMTP_PASS}
       - JWT_SECRET=${JWT_SECRET}
+      - SPRING_DATA_REDIS_SSL_ENABLED=true
     restart: always
