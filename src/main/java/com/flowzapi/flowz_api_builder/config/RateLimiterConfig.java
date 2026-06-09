@@ -1,24 +1,18 @@
 package com.flowzapi.flowz_api_builder.config;
 
-import io.github.bucket4j.distributed.ExpirationAfterWriteStrategy;
 import io.github.bucket4j.distributed.proxy.ProxyManager;
-import io.github.bucket4j.redis.lettuce.cas.LettuceBasedProxyManager;
+import io.github.bucket4j.redis.lettuce.cas.LettuceBasedProxyManager; // ודא שזה ה-import המקורי שלך
+import io.lettuce.core.ClientOptions;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.RedisURI;
-import io.lettuce.core.ClientOptions;
-import io.lettuce.core.SocketOptions;
+import io.lettuce.core.SslOptions;
 import io.lettuce.core.api.StatefulRedisConnection;
-import io.lettuce.core.codec.ByteArrayCodec;
-import io.lettuce.core.codec.StringCodec;
-import io.lettuce.core.codec.RedisCodec;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.data.redis.connection.RedisPassword;
 import org.springframework.data.redis.connection.RedisStandaloneConfiguration;
 import org.springframework.data.redis.connection.lettuce.LettuceClientConfiguration;
 import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
-
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.time.Duration;
@@ -30,7 +24,7 @@ public class RateLimiterConfig {
     private String redisHost;
 
     @Value("${REDIS_PORT:${spring.data.redis.port:6379}}")
-    private int redisPort; // שים לב שהפכנו את זה ל-int לנוחות
+    private int redisPort;
 
     @Value("${REDIS_PASS:${spring.data.redis.password:placeholder}}")
     private String redisPassword;
@@ -40,9 +34,8 @@ public class RateLimiterConfig {
 
     @Bean
     public LettuceConnectionFactory redisConnectionFactory() {
-        // טריק ה-DNS Resolve: אם המארח הוא לא localhost, ננסה לפתור את הכתובת שלו ל-IP
         String resolvedHost = redisHost;
-        if (!"localhost".equals(redisHost)) {
+        if (!"localhost".equals(redisHost) && !"127.0.0.1".equals(redisHost)) {
             try {
                 resolvedHost = InetAddress.getByName(redisHost).getHostAddress();
                 System.out.println("[Redis DNS] Successfully resolved " + redisHost + " to " + resolvedHost);
@@ -52,46 +45,76 @@ public class RateLimiterConfig {
         }
 
         RedisStandaloneConfiguration redisConfig = new RedisStandaloneConfiguration();
-        redisConfig.setHostName(resolvedHost); // כאן עובר ה-IP הפתור או ה-localhost
+        redisConfig.setHostName(resolvedHost);
         redisConfig.setPort(redisPort);
         redisConfig.setPassword(redisPassword);
 
-        LettuceClientConfiguration clientConfig = LettuceClientConfiguration.builder()
-                .useSsl() // Upstash מחייב SSL
-                .build();
+        LettuceClientConfiguration.LettuceClientConfigurationBuilder clientConfigBuilder =
+                LettuceClientConfiguration.builder();
 
-        return new LettuceConnectionFactory(redisConfig, clientConfig);
+        if (sslEnabled) {
+            clientConfigBuilder.useSsl();
+            System.out.println("[Redis Config] SSL is enabled for this connection.");
+        }
+
+        return new LettuceConnectionFactory(redisConfig, clientConfigBuilder.build());
     }
 
     @Bean
-    public ProxyManager<String> proxyManager() {
+    public RedisClient redisClient() {
+        String resolvedHost = redisHost;
+        if (!"localhost".equals(redisHost) && !"127.0.0.1".equals(redisHost)) {
+            try {
+                resolvedHost = InetAddress.getByName(redisHost).getHostAddress();
+            } catch (UnknownHostException e) {
+                System.err.println("[Redis DNS] Could not resolve host " + redisHost);
+            }
+        }
 
+        // בניית ה-URI עם הפורט והאוטנטיקציה
         RedisURI redisUri = RedisURI.builder()
-                .withHost(redisHost.trim())
-                .withPort(redisPort)
-                .withPassword(redisPassword.trim().toCharArray())
-                .withSsl(sslEnabled)
-                .withTimeout(Duration.ofSeconds(15)) // נותן לענן 15 שניות להתייצב
+                .withHost(resolvedHost)
+                .withPort(redisPort) // כאן יתקבל 6379
+                .withAuthentication("default", redisPassword)
+                .withTimeout(Duration.ofSeconds(10))
                 .build();
 
-        RedisClient redisClient = RedisClient.create(redisUri);
+        // אם SSL מופעל (חובה עבור Upstash מחוץ לשרת המקומי)
+        if (sslEnabled) {
+            redisUri.setSsl(true);
+            redisUri.setVerifyPeer(false); // מונע בעיות של אימות תעודות SSL בסביבות ענן כמו Railway
+        }
 
-        ClientOptions clientOptions = ClientOptions.builder()
-                .socketOptions(SocketOptions.builder()
-                        .connectTimeout(Duration.ofSeconds(15))
-                        .build())
-                .disconnectedBehavior(ClientOptions.DisconnectedBehavior.REJECT_COMMANDS)
-                .build();
+        RedisClient client = RedisClient.create(redisUri);
 
-        redisClient.setOptions(clientOptions);
+        // הגדרת אופציות SSL מורחבות עבור הטרנספורט של Netty
+        if (sslEnabled) {
+            SslOptions sslOptions = SslOptions.builder()
+                    .jdkSslProvider()
+                    .build();
 
-        StatefulRedisConnection<String, byte[]> connection = redisClient.connect(
-                RedisCodec.of(StringCodec.UTF8, new ByteArrayCodec())
-        );
+            ClientOptions clientOptions = ClientOptions.builder()
+                    .sslOptions(sslOptions)
+                    .disconnectedBehavior(ClientOptions.DisconnectedBehavior.REJECT_COMMANDS)
+                    .build();
 
-        return LettuceBasedProxyManager.builderFor(connection)
-                .withExpirationStrategy(ExpirationAfterWriteStrategy.fixedTimeToLive(Duration.ofMinutes(2)))
-                .build();
+            client.setOptions(clientOptions);
+        }
+
+        return client;
     }
 
+    @Bean
+    public ProxyManager<String> proxyManager(RedisClient redisClient) {
+        // פתיחת החיבור בצורה ישירה ומפורשת עם הטיפוס המדויק ש-Bucket4j צריך
+        StatefulRedisConnection<String, byte[]> nativeConnection =
+                redisClient.connect(io.lettuce.core.codec.RedisCodec.of(
+                        io.lettuce.core.codec.StringCodec.UTF8,
+                        io.lettuce.core.codec.ByteArrayCodec.INSTANCE
+                ));
+
+        return LettuceBasedProxyManager.builderFor(nativeConnection)
+                .withExpirationStrategy(io.github.bucket4j.distributed.ExpirationAfterWriteStrategy.fixedTimeToLive(Duration.ofSeconds(60)))
+                .build();
+    }
 }
