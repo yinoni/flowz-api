@@ -120,7 +120,7 @@ public class AuthController {
     private ResponseCookie generateResponseCookie(String refreshToken, int age) {
         return ResponseCookie.from("refresh_token", refreshToken)
                 .httpOnly(true)
-                .secure(false)
+                .secure(true)
                 .path("/auth")
                 .maxAge(Duration.ofDays(age))
                 .sameSite("Lax")
