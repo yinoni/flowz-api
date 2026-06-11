@@ -5,6 +5,7 @@ import com.flowzapi.flowz_api_builder.model.Project;
 import com.flowzapi.flowz_api_builder.model.Step;
 import com.flowzapi.flowz_api_builder.model.StepBuilder;
 import com.flowzapi.flowz_api_builder.model.flow.*;
+import com.flowzapi.flowz_api_builder.model.step.StepRequest;
 import com.flowzapi.flowz_api_builder.model.user.CustomUserDetails;
 import com.flowzapi.flowz_api_builder.service.FlowService;
 import jakarta.validation.Valid;
@@ -67,9 +68,9 @@ public class FlowController {
     }
 
     @GetMapping("/steps")
-    public ResponseEntity<List<Step>> getFlowSteps(@RequestParam String flowId, @AuthenticationPrincipal CustomUserDetails customUserDetails) {
-        List<Step> steps = flowService.getFlowSteps(flowId, customUserDetails.getId());
-        return ResponseEntity.ok(steps);
+    public ResponseEntity<FlowStepsResponse> getFlowSteps(@RequestParam String flowId, @AuthenticationPrincipal CustomUserDetails customUserDetails) {
+        FlowStepsResponse flowSteps = flowService.getFlowSteps(flowId, customUserDetails.getId());
+        return ResponseEntity.ok(flowSteps);
     }
 
     @DeleteMapping("/steps/{flowId}")
@@ -80,17 +81,17 @@ public class FlowController {
     }
 
     @PatchMapping("/steps/{flowId}")
-    public ResponseEntity<?> editFlowStep(@RequestBody Step stepEditInput, @PathVariable String flowId, @AuthenticationPrincipal CustomUserDetails customUserDetails) {
-        flowService.editStep(flowId, stepEditInput, customUserDetails.getId());
+    public ResponseEntity<?> editFlowStep(@RequestBody StepRequest stepRequest, @PathVariable String flowId, @AuthenticationPrincipal CustomUserDetails customUserDetails) {
+        flowService.editStep(flowId, stepRequest, customUserDetails.getId());
 
         return ResponseEntity.ok("step edited");
     }
 
     @PostMapping("/steps/{flowId}")
-    public ResponseEntity<?> createStep(@RequestBody Step step, @PathVariable String flowId,  @AuthenticationPrincipal CustomUserDetails customUserDetails) {
-        flowService.addStep(flowId, step, customUserDetails.getId());
+    public ResponseEntity<?> createStep(@RequestBody StepRequest stepRequest, @PathVariable String flowId,  @AuthenticationPrincipal CustomUserDetails customUserDetails) {
+        String stepId = flowService.addStep(flowId, stepRequest, customUserDetails.getId());
 
-        return ResponseEntity.ok("step added");
+        return ResponseEntity.ok(stepId);
     }
 
     @PatchMapping("/steps/{flowId}/reorder")
@@ -98,6 +99,13 @@ public class FlowController {
         flowService.reorderSteps(flowId, stepsRequest, customUserDetails.getId());
 
         return ResponseEntity.ok("Steps reordered added");
+    }
+
+    @DeleteMapping("/fallback/{flowId}")
+    public ResponseEntity<?> deleteFlowFallback(@RequestParam String fallbackId, @PathVariable String flowId, @AuthenticationPrincipal CustomUserDetails customUserDetails) {
+        flowService.deleteFallback(flowId, fallbackId, customUserDetails.getId());
+
+        return ResponseEntity.ok("step deleted");
     }
 
 }

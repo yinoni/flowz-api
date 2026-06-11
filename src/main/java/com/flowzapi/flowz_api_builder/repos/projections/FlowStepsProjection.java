@@ -7,4 +7,5 @@ import java.util.List;
 public interface FlowStepsProjection {
     String getOwnerId();
     List<Step> getSteps();
+    List<Step> getFallbacks();
 }

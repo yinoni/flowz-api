@@ -121,9 +121,9 @@ public class AuthController {
         return ResponseCookie.from("refresh_token", refreshToken)
                 .httpOnly(true)
                 .secure(true)
-                .path("/auth")
+                .path("/")
                 .maxAge(Duration.ofDays(age))
-                .sameSite("Lax")
+                .sameSite("None")
                 .build();
     }
 }

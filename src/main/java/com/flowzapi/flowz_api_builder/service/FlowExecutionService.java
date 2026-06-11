@@ -1,16 +1,16 @@
 package com.flowzapi.flowz_api_builder.service;
 
-import com.flowzapi.flowz_api_builder.exception.BadRequestException;
-import com.flowzapi.flowz_api_builder.exception.FlowNotFound;
-import com.flowzapi.flowz_api_builder.exception.UserNotAllowedException;
+import com.flowzapi.flowz_api_builder.exception.*;
 import com.flowzapi.flowz_api_builder.model.Flow;
 import com.flowzapi.flowz_api_builder.model.Step;
 import com.flowzapi.flowz_api_builder.model.flow.FlowTestResponse;
+import com.flowzapi.flowz_api_builder.model.flow.FlowTestResponseBuilder;
 import com.flowzapi.flowz_api_builder.model.step.StepWSResponse;
 import com.flowzapi.flowz_api_builder.model.step.StepWSResponseBuilder;
 import com.flowzapi.flowz_api_builder.repos.FlowRepository;
 import com.flowzapi.flowz_api_builder.utils.JsonFlattener;
 import lombok.RequiredArgsConstructor;
+import org.checkerframework.checker.units.qual.A;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
@@ -20,6 +20,7 @@ import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
+import java.net.InetAddress;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -28,6 +29,8 @@ import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 
+import static com.flowzapi.flowz_api_builder.model.StepBuilder.aStep;
+import static com.flowzapi.flowz_api_builder.model.flow.FlowTestResponseBuilder.aFlowTestResponse;
 import static com.flowzapi.flowz_api_builder.model.step.StepWSResponseBuilder.aStepWSResponse;
 
 @Service
@@ -75,10 +78,10 @@ public class FlowExecutionService {
         return executionID;
     }
 
+    @Async
     public void executeFlow(String executionID, String userID){
         try{
             String redisValue = (String) redisTemplate.opsForValue().get(REDIS_EXECUTION_ID_KEY + executionID);
-
             if(redisValue == null) {
                 System.out.println("SOCKET MESSAGE => Error! Execution ID not found or expired.");
                 messagingTemplate.convertAndSend(SOCKET_TOPIC_DESTINATION + executionID, (Object) Map.of(
@@ -104,11 +107,18 @@ public class FlowExecutionService {
                         "message", "Executing..."
                 ));
 
-                FlowTestResponse testResponse = executeSteps(flowId, userID, executionID);
+                boolean flowFailed = execute(flowId, userID, executionID);
+
+                FlowTestResponseBuilder flowTestResponseBuilder = aFlowTestResponse()
+                        .withTestPassed(flowFailed)
+                        .withMessage(flowFailed ? "Execution Failed" : "Execution Succeeded")
+                        .withStatus(flowFailed ? "FLOW_FAILED" : "FLOW_PASSED");
+
+                FlowTestResponse testResponse = flowTestResponseBuilder.build();
 
                 messagingTemplate.convertAndSend(SOCKET_TOPIC_DESTINATION + executionID, (Object) Map.of(
-                        "status", testResponse.getStatus(),
-                        "success", testResponse.isTestPassed(),
+                       "status", testResponse.getStatus(),
+                       "success", testResponse.isTestPassed(),
                         "message", testResponse.getMessage()
                 ));
             }
@@ -142,24 +152,46 @@ public class FlowExecutionService {
      * This function execute the steps -> Sends http requests to the URL's in the steps list
      * and execute them according to the step information
      */
-    public FlowTestResponse executeSteps(String flowId, String userId, String executionID){
+    public boolean execute(String flowId, String userId, String executionID){
         Flow lookupFlow = this.findById(flowId);
         Map<String, Object> flowContent = new HashMap<>();
+        boolean flowFailed = false;
+
+
         if(lookupFlow.getGlobalVariables() != null)
             flowContent.putAll(lookupFlow.getGlobalVariables());
 
         isUserAllowed(lookupFlow.getOwnerId(), userId);
         StepWSResponseBuilder stepWSResponseBuilder = aStepWSResponse();
-        for (Step step : lookupFlow.getSteps()) {
-            try {
+
+        List<Step> stepsList = lookupFlow.getSteps();
+        List<Step> fallbacksList = lookupFlow.getFallbacks();
+
+        Step currentStep = stepsList.get(0);
+        Map<String, Step> stepsMap = new HashMap<>();
+        Map<String, Step> fallbackStepsMap = new HashMap<>();
+        int currentStepIndex = 0;
+        boolean retry = false;
+        int retryCount = 0;
+        Map<String, Object> activeAssertions = new HashMap<>();
+
+        stepsList.forEach((step) -> {
+            stepsMap.put(step.getId(), step);
+        });
+
+        fallbacksList.forEach((step) -> {
+            fallbackStepsMap.put(step.getId(), step);
+        });
+
+        while(currentStep != null){
+            try{
                 stepWSResponseBuilder
-                        .withStepId(step.getId())
-                        .withMessage("'" + step.getTitle() + "' Test Passed!")
+                        .withStepId(currentStep.getId())
+                        .withMessage("'" + currentStep.getTitle() + "' Test Passed!")
                         .withStatus("STEP_PASSED")
                         .withSuccess(true);
 
-                Map<String, Object> activeAssertions = new HashMap<>();
-
+                //Insert the global assertions to the flow execution
                 if (lookupFlow.getGlobalAssertions() != null) {
                     activeAssertions = objectMapper.convertValue(
                             lookupFlow.getGlobalAssertions(),
@@ -167,58 +199,143 @@ public class FlowExecutionService {
                     );
                 }
 
-                if (step.getAssertions() != null) {
-                    activeAssertions.putAll(step.getAssertions());
+                //Insert the current step assertions to the flow execution
+                if (currentStep.getAssertions() != null) {
+                    activeAssertions.putAll(currentStep.getAssertions());
                 }
 
-                HttpRequest request = buildRequest(step, flowContent, lookupFlow);
+                //Build the HTTP request
+                HttpRequest request = buildRequest(currentStep, flowContent, lookupFlow);
 
                 HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
 
-                Map<String, Object> mappedBody = new HashMap<>();
-                String bodyString = response.body() != null ? response.body().trim() : "";
+                //Fetch the status code from the response
+                String statusCode = String.valueOf(response.statusCode());
+                //Get the next step id from the current step routes by the status code
+                String nextStepId = currentStep.getRoutes().get(statusCode);
 
-                if (!bodyString.isEmpty()) {
-                    if (bodyString.startsWith("{") || bodyString.startsWith("[")) {
-                        try {
-                            mappedBody = objectMapper.readValue(bodyString, Map.class);
-                        } catch (Exception jsonEx) {
-                            mappedBody.put("rawValue", bodyString);
+                Map<String, Object> mappedBody = mapResponseBody(response);
+
+                if(Objects.nonNull(nextStepId)){
+                    if(!statusCode.startsWith("2")) {
+                        if (retryCount >= 1) {
+                            System.err.println("Max retries reached for step: " + currentStep.getId() + ". Stopping flow.");
+                            throw new StepExecutionException("Max retries reached for step: " + currentStep.getId() + ". Stopping flow.", HttpStatus.BAD_REQUEST);
                         }
-                    } else {
-                        mappedBody.put("rawValue", bodyString);
+                        currentStep = fallbackStepsMap.get(nextStepId);
+                        if(currentStep == null) {
+                            throw new StepExecutionException("No fallback step found with this ID: " + nextStepId, HttpStatus.BAD_REQUEST);
+                        }
+                        stepWSResponseBuilder.withStatus("STEP_FAILED")
+                                .withMessage("Enter fallback: " + currentStep.getTitle())
+                                .withSuccess(false)
+                                .withResponse(response.body());
+                        sendWSForStep(stepWSResponseBuilder.build(), executionID);
+
+                        retry = true;
+                        retryCount++;
+                    }
+                    else{
+                        //Extract the response body and add it to the flowContent
+                        flowContent.putAll(extractBody(mappedBody, currentStep.getExtract(), activeAssertions));
+
+                        currentStep = stepsMap.get(nextStepId);
+                        if (currentStep != null) {
+                            currentStepIndex = stepsList.indexOf(currentStep);
+                        }
+                        retry = false;
+                        retryCount = 0;
                     }
                 }
+                else{
+                    //Check if there is assertion for status code
+                    boolean haveStatusAssertion = activeAssertions.containsKey("status");
+                    int resStatusCode = response.statusCode();
+                    stepWSResponseBuilder.withResponse(response.body());
 
-                boolean haveStatusAssertion = activeAssertions.containsKey("status");
-                int resStatusCode = response.statusCode();
-                stepWSResponseBuilder.withResponse(response.body());
+                    if(!haveStatusAssertion && !(resStatusCode >= 200 && resStatusCode <= 299)){
+                        throw new StepExecutionException("'" + currentStep.getTitle() + "' Test Failed!\n   " + response.body(), HttpStatus.INTERNAL_SERVER_ERROR);
+                    }
 
-                if(!haveStatusAssertion && !(resStatusCode >= 200 && resStatusCode <= 299)){
+                    //Extract the response body and add it to the flowContent
+                    flowContent.putAll(extractBody(mappedBody, currentStep.getExtract(), activeAssertions));
+                    sendWSForStep(stepWSResponseBuilder.build(), executionID);
+                    if(retry){
+                        currentStep = stepsList.get(currentStepIndex);
+                        retry = false;
+                        continue;
+                    }
+
+                    if (currentStepIndex < stepsList.size() - 1) {
+                        currentStepIndex += 1;
+                        currentStep = stepsList.get(currentStepIndex);
+                        retryCount = 0;
+                    }
+                    else
+                        currentStep = null;
+                }
+            } catch (Exception e) {
+                if(currentStep != null) {
                     stepWSResponseBuilder.withStatus("STEP_FAILED")
-                            .withMessage("'" + step.getTitle() + "' Test Failed!\n   " + response.body())
-                            .withSuccess(false);
+                            .withMessage("'" + currentStep.getTitle() + "' Test Failed!\n   " + e.getMessage())
+                            .withSuccess(false)
+                            .withResponse(e.getMessage());
 
                     sendWSForStep(stepWSResponseBuilder.build(), executionID);
-                    return new FlowTestResponse("FLOW_FAILED", "The response returned with status code: " + resStatusCode,false);
-
+                    currentStep = null;
+                    flowFailed = true;
                 }
-
-                mappedBody.put("status", resStatusCode);
-                flowContent.putAll(extractBody(mappedBody, step.getExtract(), activeAssertions));
-
-                sendWSForStep(stepWSResponseBuilder.build(), executionID);
-            } catch (Exception e) {
-                stepWSResponseBuilder.withStatus("STEP_FAILED")
-                        .withMessage("'" + step.getTitle() + "' Test Failed!\n   " + e.getMessage())
-                        .withSuccess(false)
-                        .withResponse(e.getMessage());
-                sendWSForStep(stepWSResponseBuilder.build(), executionID);
-                return new FlowTestResponse("FLOW_FAILED", "One of the steps got failed", false);
             }
         }
 
-        return new FlowTestResponse("FLOW_COMPLETED",  "", true);
+        return flowFailed;
+    }
+
+    public Map<String, Object> mapResponseBody(HttpResponse<String> responseBody){
+        String bodyString = responseBody.body() != null ? responseBody.body().trim() : "";
+        Map<String, Object> mappedBody = new HashMap<>();
+
+        if (!bodyString.isEmpty()) {
+            if (bodyString.startsWith("{") || bodyString.startsWith("[")) {
+                try {
+                    mappedBody = objectMapper.readValue(bodyString, Map.class);
+                } catch (Exception jsonEx) {
+                    mappedBody.put("rawValue", bodyString);
+                }
+            } else {
+                mappedBody.put("rawValue", bodyString);
+            }
+        }
+
+        return mappedBody;
+    }
+
+
+    public void validateUrl(String urlString) {
+        try {
+            URI uri = new URI(urlString);
+            String host = uri.getHost();
+
+            if (host == null) {
+                throw new URLNotValidException("Invalid URL structure");
+            }
+
+            // 1. הגנה בסיסית מפני מילים שמורות
+            String lowerHost = host.toLowerCase();
+            if (lowerHost.equals("localhost") || lowerHost.endsWith(".local")) {
+                throw new URLNotValidException("Access to local network is forbidden");
+            }
+
+            // 2. הגנה מתקדמת: פתרון ה-IP (מונע מתוקף להזין פשוט 127.0.0.1)
+            InetAddress inetAddress = InetAddress.getByName(host);
+
+            if (inetAddress.isLoopbackAddress() || inetAddress.isSiteLocalAddress() || inetAddress.isAnyLocalAddress()) {
+                throw new URLNotValidException("Access to private/loopback IP addresses is forbidden");
+            }
+
+        } catch (Exception e) {
+            throw new URLNotValidException("URL Validation failed: " + e.getMessage());
+        }
     }
 
     /**
@@ -232,6 +349,9 @@ public class FlowExecutionService {
         String url = step.getUrl();
         String body = step.getBody();
         Map<String, String> finalHeaders = new HashMap<>();
+
+
+        //validateUrl(url); //Validation for SSRF Vulnerability ----> FOR PRODUCTION
 
         if(currentFlow.getGlobalHeaders() != null)
             finalHeaders.putAll(currentFlow.getGlobalHeaders());

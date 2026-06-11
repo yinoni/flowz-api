@@ -51,7 +51,8 @@ public class SecurityConfig {
                 )
 
                 // 3. הזרקת ה-JWT Filter שלנו לפני הפילטר הסטנדרטי של Username/Password
-                .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
+                .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterAfter(rateLimitingFilter, JwtFilter.class);
 
         return http.build();
     }

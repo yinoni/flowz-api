@@ -11,6 +11,8 @@ public final class StepBuilder {
     private String httpMethod;
     private Map<String, String> extract;
     private Map<String, Object> assertions;
+    private Map<String, String> routes;
+    private Step.Position position;
 
     private StepBuilder() {
     }
@@ -59,6 +61,16 @@ public final class StepBuilder {
         return this;
     }
 
+    public StepBuilder withRoutes(Map<String, String> routes) {
+        this.routes = routes;
+        return this;
+    }
+
+    public StepBuilder withPosition(Step.Position position) {
+        this.position = position;
+        return this;
+    }
+
     public Step build() {
         Step step = new Step();
         step.setId(id);
@@ -69,6 +81,8 @@ public final class StepBuilder {
         step.setHttpMethod(httpMethod);
         step.setExtract(extract);
         step.setAssertions(assertions);
+        step.setRoutes(routes);
+        step.setPosition(position);
         return step;
     }
 }
