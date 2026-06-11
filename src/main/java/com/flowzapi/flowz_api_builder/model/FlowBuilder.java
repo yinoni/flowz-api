@@ -10,6 +10,7 @@ public final class FlowBuilder {
     private String projectId;
     private String ownerId;
     private List<Step> steps;
+    private List<Step> fallbacks;
     private String globalURL;
     private Map<String, Object> globalVariables;
     private Map<String, String> globalHeaders;
@@ -48,6 +49,11 @@ public final class FlowBuilder {
         return this;
     }
 
+    public FlowBuilder withFallbacks(List<Step> fallbacks) {
+        this.fallbacks = fallbacks;
+        return this;
+    }
+
     public FlowBuilder withGlobalURL(String globalURL) {
         this.globalURL = globalURL;
         return this;
@@ -80,6 +86,7 @@ public final class FlowBuilder {
         flow.setProjectId(projectId);
         flow.setOwnerId(ownerId);
         flow.setSteps(steps);
+        flow.setFallbacks(fallbacks);
         flow.setGlobalURL(globalURL);
         flow.setGlobalVariables(globalVariables);
         flow.setGlobalHeaders(globalHeaders);

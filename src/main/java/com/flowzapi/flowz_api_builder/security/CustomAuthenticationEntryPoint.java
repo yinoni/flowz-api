@@ -27,7 +27,7 @@ public class CustomAuthenticationEntryPoint implements AuthenticationEntryPoint 
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
 
         ErrorResponse errorResponse = new ErrorResponse(
-                "Token is invalid or expired312312",
+                "Token is invalid or expired",
                 HttpStatus.UNAUTHORIZED,
                 LocalDateTime.now()
         );

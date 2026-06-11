@@ -1,12 +1,15 @@
 package com.flowzapi.flowz_api_builder.config;
 
 import io.github.bucket4j.distributed.proxy.ProxyManager;
-import io.github.bucket4j.redis.lettuce.cas.LettuceBasedProxyManager; // ודא שזה ה-import המקורי שלך
+import io.github.bucket4j.redis.lettuce.cas.LettuceBasedProxyManager;
 import io.lettuce.core.ClientOptions;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.RedisURI;
 import io.lettuce.core.SslOptions;
 import io.lettuce.core.api.StatefulRedisConnection;
+import io.lettuce.core.resource.ClientResources;
+import io.lettuce.core.resource.DefaultClientResources;
+import io.lettuce.core.resource.DnsResolver;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -32,62 +35,67 @@ public class RateLimiterConfig {
     @Value("${SPRING_DATA_REDIS_SSL_ENABLED:${spring.data.redis.ssl.enabled:false}}")
     private boolean sslEnabled;
 
-    @Bean
-    public LettuceConnectionFactory redisConnectionFactory() {
-        String resolvedHost = redisHost;
-        if (!"localhost".equals(redisHost) && !"127.0.0.1".equals(redisHost)) {
-            try {
-                resolvedHost = InetAddress.getByName(redisHost).getHostAddress();
-                System.out.println("[Redis DNS] Successfully resolved " + redisHost + " to " + resolvedHost);
-            } catch (UnknownHostException e) {
-                System.err.println("[Redis DNS] Warning: Could not resolve host " + redisHost + ", falling back to raw string.");
-            }
-        }
+    /**
+     * רכיב ה-ClientResources שמגדיר מנגנון DNS חסין.
+     * מונע מ-Netty לנסות לבצע פתרון הפוך (Reverse Lookup) שמייצר את ה- <unresolved>.
+     */
+    @Bean(destroyMethod = "shutdown")
+    public ClientResources clientResources() {
+        return DefaultClientResources.builder()
+                .dnsResolver(new DnsResolver() {
+                    @Override
+                    public InetAddress[] resolve(String host) throws UnknownHostException {
+                        // אם זה השרת המרוחק שלנו, נפתור אותו ידנית ל-IP קשיח וסגור
+                        if (redisHost.equals(host) && !"localhost".equals(host) && !"127.0.0.1".equals(host)) {
+                            InetAddress rawAddress = InetAddress.getByName(host);
+                            // יצירת אובייקט InetAddress שמכיל רק את הבייטים של ה-IP - חסין מ-Reverse DNS
+                            InetAddress secureAddress = InetAddress.getByAddress(host, rawAddress.getAddress());
+                            System.out.println("[Redis DNS] Securely resolved " + host + " to " + secureAddress.getHostAddress());
+                            return new InetAddress[]{ secureAddress };
+                        }
+                        // לכל מקרה אחר (כמו localhost), נשתמש ברזולבר הסטנדרטי של ה-JVM
+                        return InetAddress.getAllByName(host);
+                    }
+                })
+                .build();
+    }
 
+    @Bean
+    public LettuceConnectionFactory redisConnectionFactory(ClientResources clientResources) {
         RedisStandaloneConfiguration redisConfig = new RedisStandaloneConfiguration();
-        redisConfig.setHostName(resolvedHost);
+        redisConfig.setHostName(redisHost); // משתמשים ב-Host המקורי, ה-Resolver כבר יטפל בו
         redisConfig.setPort(redisPort);
         redisConfig.setPassword(redisPassword);
 
         LettuceClientConfiguration.LettuceClientConfigurationBuilder clientConfigBuilder =
-                LettuceClientConfiguration.builder();
+                LettuceClientConfiguration.builder()
+                        .clientResources(clientResources); // הזרקת ה-Resources המוגנים
 
         if (sslEnabled) {
             clientConfigBuilder.useSsl();
-            System.out.println("[Redis Config] SSL is enabled for this connection.");
+            System.out.println("[Redis Factory] SSL enabled.");
         }
 
         return new LettuceConnectionFactory(redisConfig, clientConfigBuilder.build());
     }
 
     @Bean
-    public RedisClient redisClient() {
-        String resolvedHost = redisHost;
-        if (!"localhost".equals(redisHost) && !"127.0.0.1".equals(redisHost)) {
-            try {
-                resolvedHost = InetAddress.getByName(redisHost).getHostAddress();
-            } catch (UnknownHostException e) {
-                System.err.println("[Redis DNS] Could not resolve host " + redisHost);
-            }
-        }
-
-        // בניית ה-URI עם הפורט והאוטנטיקציה
+    public RedisClient redisClient(ClientResources clientResources) {
         RedisURI redisUri = RedisURI.builder()
-                .withHost(resolvedHost)
-                .withPort(redisPort) // כאן יתקבל 6379
+                .withHost(redisHost)
+                .withPort(redisPort)
                 .withAuthentication("default", redisPassword)
                 .withTimeout(Duration.ofSeconds(10))
                 .build();
 
-        // אם SSL מופעל (חובה עבור Upstash מחוץ לשרת המקומי)
         if (sslEnabled) {
             redisUri.setSsl(true);
-            redisUri.setVerifyPeer(false); // מונע בעיות של אימות תעודות SSL בסביבות ענן כמו Railway
+            redisUri.setVerifyPeer(false); // עוקף בעיות אימות תעודות בענן
         }
 
-        RedisClient client = RedisClient.create(redisUri);
+        // יצירת הלקוח עם ה-ClientResources המכילים את ה-DnsResolver המותאם
+        RedisClient client = RedisClient.create(clientResources, redisUri);
 
-        // הגדרת אופציות SSL מורחבות עבור הטרנספורט של Netty
         if (sslEnabled) {
             SslOptions sslOptions = SslOptions.builder()
                     .jdkSslProvider()
@@ -106,7 +114,6 @@ public class RateLimiterConfig {
 
     @Bean
     public ProxyManager<String> proxyManager(RedisClient redisClient) {
-        // פתיחת החיבור בצורה ישירה ומפורשת עם הטיפוס המדויק ש-Bucket4j צריך
         StatefulRedisConnection<String, byte[]> nativeConnection =
                 redisClient.connect(io.lettuce.core.codec.RedisCodec.of(
                         io.lettuce.core.codec.StringCodec.UTF8,

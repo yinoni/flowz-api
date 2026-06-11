@@ -32,9 +32,9 @@ public class JwtFilter extends OncePerRequestFilter {
         if (authHeader != null && authHeader.startsWith("Bearer ")) {
             String token = authHeader.substring(7);
             String email = jwtService.validateTokenAndGetEmail(token);
-            //boolean isVerified = jwtService.extractClaim(token,"verified", Boolean.class);
+            boolean isVerified = jwtService.extractClaim(token,"verified", Boolean.class);
 
-            if (email != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+            if (email != null && SecurityContextHolder.getContext().getAuthentication() == null && isVerified) {
                 UserDetails userDetails = userDetailsService.loadUserByUsername(email);
 
                 UsernamePasswordAuthenticationToken authToken =

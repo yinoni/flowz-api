@@ -6,14 +6,19 @@ import com.flowzapi.flowz_api_builder.model.Flow;
 import com.flowzapi.flowz_api_builder.model.Project;
 import com.flowzapi.flowz_api_builder.model.Step;
 import com.flowzapi.flowz_api_builder.model.flow.*;
+import com.flowzapi.flowz_api_builder.model.step.StepRequest;
 import com.flowzapi.flowz_api_builder.repos.FlowRepository;
 import com.flowzapi.flowz_api_builder.repos.projections.FlowOwnerIdProjection;
 import com.flowzapi.flowz_api_builder.repos.projections.FlowStepsProjection;
 import com.flowzapi.flowz_api_builder.utils.JsonFlattener;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
+import org.bson.Document;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.mongodb.MongoExpression;
 import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.aggregation.AggregationExpression;
+import org.springframework.data.mongodb.core.aggregation.AggregationUpdate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.data.mongodb.core.query.Update;
@@ -108,40 +113,41 @@ public class FlowService {
      * @param userId - The user ID
      * @return - Returns the flow steps
      */
-    public List<Step> getFlowSteps(String flowId, String userId){
+    public FlowStepsResponse getFlowSteps(String flowId, String userId){
         FlowStepsProjection stepsProjection = findStepsProjectedById(flowId);
         isUserAllowed(stepsProjection.getOwnerId(), userId);
 
-        return stepsProjection.getSteps();
+        FlowStepsResponse stepsResponse = new FlowStepsResponse(stepsProjection.getSteps(), stepsProjection.getFallbacks());
+        return stepsResponse;
     }
 
     /**
      *
      * @param flowId - Flow ID
-     * @param step - The step information
+     * @param stepRequest - The step information (Including the step group -> fallbacks or steps)
      * @param userId - The user ID
      *  This function adds new step to the flow with the flowId
      */
-    public void addStep(String flowId, Step step, String userId){
+    public String addStep(String flowId, StepRequest stepRequest, String userId){
         FlowStepsProjection stepsProjection = findStepsProjectedById(flowId);
         isUserAllowed(stepsProjection.getOwnerId(), userId);
         String stepUUID = UUID.randomUUID().toString();
-
+        Step step = stepRequest.getStep();
+        String fieldName = stepRequest.getStepGroup().toDbField();
 
         step.setId(stepUUID);
 
         Query query = new Query(Criteria.where("id").is(flowId));
-        Update update = new Update().push("steps", step)
+        Update update = new Update().push(fieldName, step)
                 .set("lastModified", Instant.now());
 
         mongoTemplate.updateFirst(query, update, Flow.class);
+
+        return stepUUID;
     }
 
     public void deleteFlow(String flowId, String userId){
-        FlowOwnerIdProjection lookupFlow = flowRepository.findOwnerIdProjectedById(flowId)
-                .orElseThrow(() -> new FlowNotFound("This flow is not exists!"));
-
-        isUserAllowed(lookupFlow.getOwnerId(), userId);
+        findOwnerIdProjectedById(flowId, userId);
 
         flowRepository.deleteById(flowId);
     }
@@ -172,14 +178,17 @@ public class FlowService {
 
     }
 
-    public void editStep(String flowId, Step step, String userId){
+    public void editStep(String flowId, StepRequest stepRequest, String userId){
         FlowStepsProjection stepsProjection = findStepsProjectedById(flowId);
         isUserAllowed(stepsProjection.getOwnerId(), userId);
 
-        Query query = new Query(Criteria.where("id").is(flowId).and("steps.id").is(step.getId()));
+        String stepField = stepRequest.getStepGroup().toDbField();
+        Step step = stepRequest.getStep();
+
+        Query query = new Query(Criteria.where("id").is(flowId).and(stepField+".id").is(step.getId()));
         Update update = new Update();
 
-        update.set("steps.$",  step)
+        update.set(stepField+".$",  step)
                 .set("lastModified", Instant.now());
 
         mongoTemplate.updateFirst(query, update, Flow.class);
@@ -191,10 +200,7 @@ public class FlowService {
      * @param userId - The ID of the current user
      */
     public void editFlow(FlowEditInput flowEditInput, String userId){
-        FlowOwnerIdProjection ownerIdProjection = flowRepository.findOwnerIdProjectedById(flowEditInput.getId())
-                        .orElseThrow(() -> new FlowNotFound("This flow is not exists!"));
-
-        isUserAllowed(ownerIdProjection.getOwnerId(), userId);
+        findOwnerIdProjectedById(flowEditInput.getId(), userId);
 
         Query query = new Query(Criteria.where("id").is(flowEditInput.getId()));
         Update update = new Update()
@@ -209,9 +215,7 @@ public class FlowService {
     }
 
     public void setGlobals(SetGlobalsRequest setGlobalsRequest, String flowId, String userId){
-        FlowOwnerIdProjection ownerIdProjection = flowRepository.findOwnerIdProjectedById(flowId)
-                .orElseThrow(() -> new FlowNotFound("This flow is not exists!"));
-        isUserAllowed(ownerIdProjection.getOwnerId(), userId);
+        findOwnerIdProjectedById(flowId, userId);
 
         String fieldName = setGlobalsRequest.getFieldName().toDbName();
 
@@ -220,7 +224,6 @@ public class FlowService {
                 .set("lastModified", Instant.now());
 
         mongoTemplate.updateFirst(query, update, Flow.class);
-        Flow flow = findById(flowId);
     }
 
     private FlowStepsProjection findStepsProjectedById(String flowId) {
@@ -242,9 +245,12 @@ public class FlowService {
 
         List<Step> newOrderSteps = new ArrayList<>();
 
-        for(String id : stepsRequest.getSteps()){
-            Step currentStep = stepMap.get(id);
+        for(ReorderStepsRequest.ReorderItem reorderItem : stepsRequest.getSteps()){
+            String stepId = reorderItem.getId();
+            Step.Position stepPosition = reorderItem.getPosition();
+            Step currentStep = stepMap.get(stepId);
             if (currentStep != null) {
+                currentStep.setPosition(stepPosition);
                 newOrderSteps.add(currentStep);
             }
         }
@@ -254,5 +260,64 @@ public class FlowService {
                 .set("lastModified", Instant.now());
 
         mongoTemplate.updateFirst(query, update, Flow.class);
+    }
+
+    private void findOwnerIdProjectedById(String flowId, String userId) {
+        FlowOwnerIdProjection flowOwnerIdProjection = flowRepository.findOwnerIdProjectedById(flowId)
+                .orElseThrow(() -> new FlowNotFound("This flow is not exists!"));
+        isUserAllowed(flowOwnerIdProjection.getOwnerId(), userId);
+    }
+
+    public void deleteFallback(String flowId, String fallbackId, String userId){
+        FlowStepsProjection stepsProjection = findStepsProjectedById(flowId);
+        isUserAllowed(stepsProjection.getOwnerId(), userId);
+        Query query = new Query(Criteria.where("id").is(flowId));
+
+        MongoExpression updateStepsExpression = () -> Document.parse(
+                "{$map: {" +
+                        "  input: '$steps'," +
+                        "  as: 'step'," +
+                        "  in: {$mergeObjects: [" +
+                        "    '$$step'," +
+                        "    {routes: {$arrayToObject: {$filter: {" +
+                        "      input: {$objectToArray: '$$step.routes'}," +
+                        "      cond: {$ne: ['$$this.v', '" + fallbackId + "']}" +
+                        "    }}}}" +
+                        "  ]}" +
+                        "}}"
+        );
+
+        AggregationUpdate update = AggregationUpdate.update()
+                .set("fallbacks").toValue((MongoExpression) () -> Document.parse(
+                        "{$filter: { input: '$fallbacks', as: 'fb', cond: {$ne: ['$$fb._id', '" + fallbackId + "']} }}"
+                ))
+                .set("steps").toValue(updateStepsExpression)
+                .set("lastModified").toValue(Instant.now());
+
+
+        mongoTemplate.updateFirst(query, update, Flow.class);
+
+    }
+
+    public enum StepGroup{
+        FALLBACKS,
+        STEPS;
+
+        public String toDbField(){
+            String field = "steps";
+            switch (this) {
+                case FALLBACKS:
+                    field= "fallbacks";
+                    break;
+                case STEPS:
+                    field = "steps";
+                    break;
+                default:
+                    field = "steps";
+                    break;
+            }
+
+            return field;
+        }
     }
 }

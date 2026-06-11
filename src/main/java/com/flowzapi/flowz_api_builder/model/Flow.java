@@ -23,6 +23,7 @@ public class Flow {
     private String projectId;
     private String ownerId;
     private List<Step> steps = new ArrayList<>();
+    private List<Step> fallbacks =  new ArrayList<>();
     private String globalURL;
     private Map<String, Object> globalVariables;
     private Map<String, String> globalHeaders;
