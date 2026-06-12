@@ -350,11 +350,11 @@ public class FlowExecutionService {
         String body = step.getBody();
         Map<String, String> finalHeaders = new HashMap<>();
 
-
-        //validateUrl(url); //Validation for SSRF Vulnerability ----> FOR PRODUCTION
-
         if(currentFlow.getGlobalHeaders() != null)
             finalHeaders.putAll(currentFlow.getGlobalHeaders());
+
+        if(step.getHeaders() != null)
+            finalHeaders.putAll(step.getHeaders());
 
         for (Map.Entry<String, Object> entry : flowContent.entrySet()) {
             String placeholder = "{{" + entry.getKey() + "}}";
@@ -366,25 +366,16 @@ public class FlowExecutionService {
             if (body != null && !body.isEmpty()) {
                 body = body.replace(placeholder, valueStr);
             }
+
+            finalHeaders.replaceAll((key, val) -> val != null ? val.replace(placeholder, valueStr) : null);
         }
+
+        validateUrl(url);
 
         HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
                 .uri(URI.create(url));
 
-        if(step.getHeaders() != null)
-            finalHeaders.putAll(step.getHeaders());
-
-        for (Map.Entry<String, String> headerEntry : finalHeaders.entrySet()) {
-            String headerVal = headerEntry.getValue();
-
-            if (headerVal != null) {
-                for (Map.Entry<String, Object> envEntry : flowContent.entrySet()) {
-                    headerVal = headerVal.replace("{{" + envEntry.getKey() + "}}", String.valueOf(envEntry.getValue()));
-                }
-            }
-
-            requestBuilder.header(headerEntry.getKey(), headerVal);
-        }
+        finalHeaders.forEach(requestBuilder::header);
 
         HttpRequest.BodyPublisher bodyPublisher = (body != null && !body.isEmpty())
                 ? HttpRequest.BodyPublishers.ofString(body)
