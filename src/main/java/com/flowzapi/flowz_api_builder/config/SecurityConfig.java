@@ -62,7 +62,7 @@ public class SecurityConfig {
         CorsConfiguration configuration = new CorsConfiguration();
 
         // 1. הגדרת הדומיינים המורשים (למשל ה-Frontend שלך ב-Next.js או React)
-        configuration.setAllowedOrigins(Arrays.asList("http://localhost:3000", "https://yourproductiondomain.com", "http://localhost:8080"));
+        configuration.setAllowedOrigins(Arrays.asList("http://localhost:3000", "https://flowz-api-tester.vercel.app", "http://localhost:8080"));
 
         // 2. הגדרת מתודות ה-HTTP המורשות
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
