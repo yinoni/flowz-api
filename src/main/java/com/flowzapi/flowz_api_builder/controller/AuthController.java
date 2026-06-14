@@ -63,16 +63,21 @@ public class AuthController {
     }
 
     @PostMapping("/google")
-    public ResponseEntity<?> googleLogin(@RequestBody Map<String, String> googleToken) {
-        String idToken = googleToken.get("token");
+    public ResponseEntity<?> googleLogin(@RequestBody Map<String, String> requestBody) {
+        String accessToken = requestBody.get("access_token");
 
-        if (idToken == null || idToken.isEmpty()) {
+        if (accessToken == null || accessToken.isEmpty()) {
             return ResponseEntity.badRequest().body("Token is required");
         }
 
-        GoogleIdToken.Payload payload = googleAuthService.verifyGoogleToken(idToken);
+        //GoogleIdToken.Payload payload = googleAuthService.verifyGoogleToken(idToken);
+        Map<String, Object> payload = googleAuthService.getPayloadFromGoogleAccessToken(accessToken);
 
-        String email = payload.getEmail();
+        if(payload == null){
+            throw new AuthenticationException("Invalid google token", HttpStatus.BAD_REQUEST);
+        }
+
+        String email = (String) payload.get("email");
         String name = (String) payload.get("name");
 
         AuthenticationResponse response = authService.authenticateWithGoogle(Map.of("email", email, "username", name));
