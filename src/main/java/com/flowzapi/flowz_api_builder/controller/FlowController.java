@@ -94,9 +94,9 @@ public class FlowController {
         return ResponseEntity.ok(stepId);
     }
 
-    @PatchMapping("/steps/{flowId}/reorder")
-    public ResponseEntity<?> reorderSteps(@RequestBody ReorderStepsRequest stepsRequest, @PathVariable String flowId, @AuthenticationPrincipal CustomUserDetails customUserDetails) {
-        flowService.reorderSteps(flowId, stepsRequest, customUserDetails.getId());
+    @PatchMapping("/steps/{flowId}/sync")
+    public ResponseEntity<?> reorderSteps(@RequestBody SyncStepsRequest stepsRequest, @PathVariable String flowId, @AuthenticationPrincipal CustomUserDetails customUserDetails) {
+        flowService.syncCanvasSteps(flowId, customUserDetails.getId(), stepsRequest);
 
         return ResponseEntity.ok("Steps reordered added");
     }
@@ -107,5 +107,4 @@ public class FlowController {
 
         return ResponseEntity.ok("step deleted");
     }
-
 }

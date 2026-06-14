@@ -11,16 +11,18 @@ import java.util.List;
 @Data
 @Getter
 @Setter
-public class ReorderStepsRequest {
-    private List<ReorderItem> steps;
-
+@NoArgsConstructor
+public class SyncStepsRequest {
+    private Step step;
+    private List<ReorderItem> reorderSteps;
 
     @Data
     @Getter
     @Setter
     @NoArgsConstructor
-   public static class ReorderItem{
+    public static class ReorderItem{
         private String id;
         private Step.Position position;
     }
 }
+

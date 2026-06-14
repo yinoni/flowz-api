@@ -1,6 +1,8 @@
 package com.flowzapi.flowz_api_builder.service;
 
+import com.flowzapi.flowz_api_builder.exception.BadRequestException;
 import com.flowzapi.flowz_api_builder.exception.FlowNotFound;
+import com.flowzapi.flowz_api_builder.exception.SyncException;
 import com.flowzapi.flowz_api_builder.exception.UserNotAllowedException;
 import com.flowzapi.flowz_api_builder.model.Flow;
 import com.flowzapi.flowz_api_builder.model.Project;
@@ -231,37 +233,6 @@ public class FlowService {
                 .orElseThrow(() -> new FlowNotFound("This flow is not exists!"));
     }
 
-    public void reorderSteps(String flowId, ReorderStepsRequest stepsRequest, String userId){
-        FlowStepsProjection flowStepsProjection = findStepsProjectedById(flowId);
-
-        isUserAllowed(flowStepsProjection.getOwnerId(), userId);
-
-        List<Step> currentSteps = flowStepsProjection.getSteps();
-
-        // 1. ⚡ הופכים את הרשימה ל-Map שבו המפתח הוא ה-ID והערך הוא אובייקט ה-Step
-        // הפעולה הזו רצה פעם אחת בלבד ב-O(N)
-        Map<String, Step> stepMap = currentSteps.stream()
-                .collect(Collectors.toMap(Step::getId, step -> step));
-
-        List<Step> newOrderSteps = new ArrayList<>();
-
-        for(ReorderStepsRequest.ReorderItem reorderItem : stepsRequest.getSteps()){
-            String stepId = reorderItem.getId();
-            Step.Position stepPosition = reorderItem.getPosition();
-            Step currentStep = stepMap.get(stepId);
-            if (currentStep != null) {
-                currentStep.setPosition(stepPosition);
-                newOrderSteps.add(currentStep);
-            }
-        }
-
-        Query query = new Query(Criteria.where("id").is(flowId));
-        Update update = new Update().set("steps", newOrderSteps)
-                .set("lastModified", Instant.now());
-
-        mongoTemplate.updateFirst(query, update, Flow.class);
-    }
-
     private void findOwnerIdProjectedById(String flowId, String userId) {
         FlowOwnerIdProjection flowOwnerIdProjection = flowRepository.findOwnerIdProjectedById(flowId)
                 .orElseThrow(() -> new FlowNotFound("This flow is not exists!"));
@@ -297,6 +268,56 @@ public class FlowService {
 
         mongoTemplate.updateFirst(query, update, Flow.class);
 
+    }
+
+    /**
+     *
+     * @param flowId -  The flow ID
+     * @param userId - The current user ID
+     * This function add a step between two steps
+     */
+    public void syncCanvasSteps(String flowId, String userId, SyncStepsRequest syncStepsRequest){
+        FlowStepsProjection stepsProjection = findStepsProjectedById(flowId);
+        isUserAllowed(stepsProjection.getOwnerId(), userId);
+
+        List<Step> steps = stepsProjection.getSteps();
+
+        Map<String, Step> stepMap = steps.stream().collect(Collectors.toMap(Step::getId, step -> step));
+
+        Step stepToAdd = syncStepsRequest.getStep();
+        List<SyncStepsRequest.ReorderItem> reorderItemList = syncStepsRequest.getReorderSteps();
+
+        List<Step> newOrderSteps = new ArrayList<>();
+        boolean isNewStepAdded = false;
+
+        for (SyncStepsRequest.ReorderItem reorderItem : reorderItemList) {
+            String currentStepId = reorderItem.getId();
+            Step currentStep = stepMap.remove(currentStepId);
+
+            if (currentStep == null) {
+                // שים לב לבדיקה הנוספת: stepToAdd != null
+                if (stepToAdd != null && !isNewStepAdded) {
+                    stepToAdd.setId(currentStepId);
+                    currentStep = stepToAdd;
+                    isNewStepAdded = true;
+                } else {
+                    throw new BadRequestException("Invalid, duplicate, or unexpected Step ID: " + currentStepId);
+                }
+            }
+
+            currentStep.setPosition(reorderItem.getPosition());
+            newOrderSteps.add(currentStep);
+        }
+
+        if (!stepMap.isEmpty()) {
+            throw new BadRequestException("Missing existing steps in request!");
+        }
+
+        Query query = new Query(Criteria.where("id").is(flowId));
+        Update update = new Update().set("steps", newOrderSteps)
+                        .set("lastModified", Instant.now());
+
+        mongoTemplate.updateFirst(query, update, Flow.class);
     }
 
     public enum StepGroup{
