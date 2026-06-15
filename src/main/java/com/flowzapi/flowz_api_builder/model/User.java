@@ -7,6 +7,8 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
+import org.springframework.data.mongodb.core.mapping.Field;
+import org.springframework.data.mongodb.core.mapping.FieldType;
 
 import static com.flowzapi.flowz_api_builder.model.user.UserDTOBuilder.anUserDTO;
 
@@ -17,6 +19,7 @@ import static com.flowzapi.flowz_api_builder.model.user.UserDTOBuilder.anUserDTO
 @NoArgsConstructor
 public class User {
     @Id
+    @Field(targetType = FieldType.OBJECT_ID)
     private String id;
     private String username;
     private String password;

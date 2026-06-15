@@ -36,21 +36,18 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-                // 1. מכיוון שמדובר ב-REST API, אנחנו לא צריכים הגנת CSRF ולא עובדים עם Sessions (הכל stateless בזכות ה-JWT)
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .exceptionHandling(exception -> exception
-                        .authenticationEntryPoint(authenticationEntryPoint) // מגדיר את ה-401 המותאם שלנו
+                        .authenticationEntryPoint(authenticationEntryPoint)
                 )
-                // 2. הגדרת חוקי גישה לנתיבים
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(org.springframework.http.HttpMethod.OPTIONS, "/**").permitAll()
-                        .requestMatchers("/auth/register", "/auth/login", "/auth/google", "/auth/refresh", "/ws-flow/**").permitAll() // נתיבי הרשמה ולוגין פתוחים לכולם
-                        .anyRequest().authenticated() // כל שאר ה-Endpoints באפליקציה דורשים יוזר מחובר
+                        .requestMatchers("/auth/register", "/auth/login", "/auth/google", "/auth/refresh", "/auth/logout", "/ws-flow/**").permitAll() // נתיבי הרשמה ולוגין פתוחים לכולם
+                        .anyRequest().authenticated()
                 )
 
-                // 3. הזרקת ה-JWT Filter שלנו לפני הפילטר הסטנדרטי של Username/Password
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterAfter(rateLimitingFilter, JwtFilter.class);
 
@@ -61,22 +58,16 @@ public class SecurityConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
 
-        // 1. הגדרת הדומיינים המורשים (למשל ה-Frontend שלך ב-Next.js או React)
         configuration.setAllowedOrigins(Arrays.asList("http://localhost:3000", "https://flowz-api-tester.vercel.app", "http://localhost:8080"));
 
-        // 2. הגדרת מתודות ה-HTTP המורשות
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
 
-        // 3. הגדרת ה-Headers שמותר ל-Frontend לשלוח (כולל ה-Authorization עבור ה-JWT)
         configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "Cache-Control"));
 
-        // 4. האם לאפשר שליחת קוקיז / Credentials במידת הצורך
         configuration.setAllowCredentials(true);
 
-        // 5. חשיפת הדרים מסוימים חזרה ל-Client אם יש צורך (אופציונלי)
         configuration.setExposedHeaders(Collections.singletonList("Authorization"));
 
-        // החלת ההגדרות הללו על כל ה-Endpoints באפליקציה (/**)
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);
         return source;

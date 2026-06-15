@@ -33,7 +33,6 @@ import java.util.Map;
 @Controller
 @RequestMapping("/auth")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "http://localhost:3000") // מאשר לקליינט שלך לדבר עם השרת
 public class AuthController {
 
     private final AuthService authService;
@@ -105,16 +104,14 @@ public class AuthController {
 
     @PostMapping("/refresh")
     public ResponseEntity<?> refreshToken(@CookieValue(name = "refresh_token", required = false) String clientRefreshToken) {
-        System.out.println("Refresh Token: " + clientRefreshToken);
-
         String newAccessToken = authService.refresh(clientRefreshToken);
 
         return ResponseEntity.ok(newAccessToken);
     }
 
     @PostMapping("/logout")
-    public ResponseEntity<?> logout(@CookieValue(name = "refresh_token", required = false) String clientRefreshToken, @AuthenticationPrincipal CustomUserDetails customUserDetails) {
-        authService.logout(customUserDetails.getId(), clientRefreshToken);
+    public ResponseEntity<?> logout(@CookieValue(name = "refresh_token", required = false) String clientRefreshToken) {
+        authService.logout(clientRefreshToken);
         ResponseCookie refreshTokenCookie = generateResponseCookie("", 0);
 
         return ResponseEntity.ok()

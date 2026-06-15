@@ -22,6 +22,15 @@ public class JwtFilter extends OncePerRequestFilter {
     private final JwtService jwtService;
     private final UserDetailsService userDetailsService; // שירות שלך ששולף משתמש מה-MongoDB לפי username/email
 
+    @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) throws ServletException {
+        String path = request.getServletPath();
+        return path.equals("/auth/refresh")
+                || path.equals("/auth/login")
+                || path.equals("/auth/register")
+                || path.equals("/auth/google")
+                || path.equals("/auth/logout");
+    }
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
