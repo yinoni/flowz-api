@@ -19,12 +19,9 @@ public class FlowDTO {
     private String flowName;
     private String projectId;
     private String globalURL;
+    private String ownerId;
     private Map<String, Object> globalVariables;
     private Map<String, String> globalHeaders;
     private Map<String, Object> globalAssertions;
     private Instant lastModified;
-
-
-
-
 }

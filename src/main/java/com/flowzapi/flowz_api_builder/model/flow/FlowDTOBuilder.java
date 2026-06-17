@@ -8,6 +8,7 @@ public final class FlowDTOBuilder {
     private String flowName;
     private String projectId;
     private String globalURL;
+    private String ownerId;
     private Map<String, Object> globalVariables;
     private Map<String, String> globalHeaders;
     private Map<String, Object> globalAssertions;
@@ -40,6 +41,11 @@ public final class FlowDTOBuilder {
         return this;
     }
 
+    public FlowDTOBuilder withOwnerId(String ownerId) {
+        this.ownerId = ownerId;
+        return this;
+    }
+
     public FlowDTOBuilder withGlobalVariables(Map<String, Object> globalVariables) {
         this.globalVariables = globalVariables;
         return this;
@@ -66,6 +72,7 @@ public final class FlowDTOBuilder {
         flowDTO.setFlowName(flowName);
         flowDTO.setProjectId(projectId);
         flowDTO.setGlobalURL(globalURL);
+        flowDTO.setOwnerId(ownerId);
         flowDTO.setGlobalVariables(globalVariables);
         flowDTO.setGlobalHeaders(globalHeaders);
         flowDTO.setGlobalAssertions(globalAssertions);

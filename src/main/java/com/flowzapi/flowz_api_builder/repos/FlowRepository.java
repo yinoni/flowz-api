@@ -20,4 +20,6 @@ public interface FlowRepository extends MongoRepository<Flow, String> {
     Optional<FlowStepsProjection> findStepsProjectedById(String id);
 
     Optional<FlowOwnerIdProjection> findOwnerIdProjectedById(String id);
+
+    boolean existsByProjectId(String projectId);
 }

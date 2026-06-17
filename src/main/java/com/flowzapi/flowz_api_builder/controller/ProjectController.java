@@ -23,9 +23,8 @@ public class ProjectController {
     private ProjectService projectService;
 
 
-    @GetMapping("")
-    public ResponseEntity<?> getProjectById(@RequestParam String projectId, @AuthenticationPrincipal CustomUserDetails customUserDetails) {
-        System.out.println("CustomUserDetails: " + customUserDetails.getId());
+    @GetMapping("/{projectId}")
+    public ResponseEntity<?> getProjectById(@PathVariable String projectId, @AuthenticationPrincipal CustomUserDetails customUserDetails) {
         return ResponseEntity.ok(projectService.findById(projectId, customUserDetails.getId()));
     }
 

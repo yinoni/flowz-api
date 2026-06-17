@@ -8,4 +8,6 @@ public interface FlowStepsProjection {
     String getOwnerId();
     List<Step> getSteps();
     List<Step> getFallbacks();
+    String getId();
+    String getProjectId();
 }

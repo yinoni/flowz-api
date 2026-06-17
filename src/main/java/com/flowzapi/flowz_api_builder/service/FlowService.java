@@ -8,6 +8,7 @@ import com.flowzapi.flowz_api_builder.model.Flow;
 import com.flowzapi.flowz_api_builder.model.Project;
 import com.flowzapi.flowz_api_builder.model.Step;
 import com.flowzapi.flowz_api_builder.model.flow.*;
+import com.flowzapi.flowz_api_builder.model.project.ProjectDTO;
 import com.flowzapi.flowz_api_builder.model.step.StepRequest;
 import com.flowzapi.flowz_api_builder.repos.FlowRepository;
 import com.flowzapi.flowz_api_builder.repos.projections.FlowOwnerIdProjection;
@@ -15,15 +16,19 @@ import com.flowzapi.flowz_api_builder.repos.projections.FlowStepsProjection;
 import com.flowzapi.flowz_api_builder.utils.JsonFlattener;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.bson.Document;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.data.mongodb.MongoExpression;
+import org.springframework.data.mongodb.core.FindAndModifyOptions;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.aggregation.AggregationExpression;
 import org.springframework.data.mongodb.core.aggregation.AggregationUpdate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.data.mongodb.core.query.Update;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import tools.jackson.databind.ObjectMapper;
@@ -32,6 +37,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.*;
@@ -39,18 +45,187 @@ import java.util.stream.Collectors;
 
 import static com.flowzapi.flowz_api_builder.model.FlowBuilder.aFlow;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class FlowService {
     private final FlowRepository flowRepository;
     private final ProjectService projectService;
     private final MongoTemplate mongoTemplate;
+    private final RedisTemplate redisTemplate;
+    private final String FLOW_REDIS_KEY = "project-flows:";
+    private final Duration GLOBAL_DURATION =  Duration.ofHours(1);
 
-    public Flow findById(String flowId) {
-        return flowRepository.findById(flowId)
-                .orElseThrow(() -> new FlowNotFound("The flow is not found"));
+    @Lazy
+    @Autowired
+    private ObjectMapper objectMapper;
+
+    /**
+     *
+     * @param projectId - The project ID
+     * @return - Generate the redis key with the projectId and the FLOW_REDIS_KEY
+     */
+    public String getRedisKey(String projectId) {
+        return  FLOW_REDIS_KEY + projectId;
     }
 
+    /**
+     *
+     * @param projectId - The project ID for the redis key
+     * @param flowId - The flow ID
+     * @return - The flow that exists in the cache. If not -> null
+     */
+    public FlowDTO getCachedFlow(String projectId, String flowId) {
+        String redisKey = getRedisKey(projectId);
+        try{
+            String redisValue = (String) redisTemplate.opsForHash().get(redisKey, flowId);
+
+            if (redisValue == null) {
+                return null;
+            }
+
+            return objectMapper.readValue(redisValue, FlowDTO.class);
+        }
+        catch(Exception e){
+            log.error("Failed to parse flow JSON from cache for flowId: " + flowId, e);
+            return null;
+        }
+    }
+
+    /**
+     *
+     * @param newFlowDTO - The updated flow
+     */
+    public void updateCachedFlow(FlowDTO newFlowDTO){
+        try{
+            String redisKey = getRedisKey(newFlowDTO.getProjectId());
+            Object currentFullListStatus = redisTemplate.opsForHash().get(redisKey, "FULL_LIST");
+
+            String stringFlowDTO = objectMapper.writeValueAsString(newFlowDTO);
+
+            boolean shouldBeFullList = "true".equals(currentFullListStatus);
+
+            redisTemplate.opsForHash().put(redisKey, newFlowDTO.getId(), stringFlowDTO);
+            redisTemplate.opsForHash().delete(redisKey, "STATUS");
+            setFullListCachedStatus(newFlowDTO.getProjectId(), shouldBeFullList);
+            updateExpire(redisKey);
+        }
+        catch(Exception e){
+            log.error("Failed to fetch the json object: createFlow Exception: ", e);
+        }
+    }
+
+    /**
+     *
+     * @param projectId - The project ID
+     * @param isFullList - Boolean flag that says if the list of flows is full or not
+     */
+    public void setFullListCachedStatus(String projectId, boolean isFullList){
+        String redisKey = getRedisKey(projectId);
+        redisTemplate.opsForHash().put(redisKey, "FULL_LIST", String.valueOf(isFullList));
+    }
+
+    /**
+     *
+     * @param flowId - The flow ID
+     * @param projectId - The project ID for the redis key
+     * @param newTime - The new time that the flow modified
+     *                This fucntion updates the lastModified field in the cache
+     */
+    public void updateLastModifiedInCache(String flowId, String projectId, Instant newTime){
+        FlowDTO flowDTO = getCachedFlow(projectId, flowId);
+
+        if(flowDTO != null){
+            flowDTO.setLastModified(newTime);
+            updateCachedFlow(flowDTO);
+        }
+    }
+
+    /**
+     *
+     * @param redisKey - The redis key
+     *                 This function set the expire TTL for the redisKey value
+     */
+    public void updateExpire(String redisKey){
+        redisTemplate.expire(redisKey, GLOBAL_DURATION);
+    }
+
+    /**
+     *
+     * @param flowId - The flow id
+     * @param userId - The current user ID
+     * @param projectId - The project ID for the redis key
+     * @return - Returns the flow information by its ID
+     */
+    public FlowDTO findById(String projectId, String flowId, String userId) {
+        FlowDTO flowDTO = getCachedFlow(projectId, flowId);
+
+        if(flowDTO != null) {
+            isUserAllowed(flowDTO.getOwnerId(), userId);
+            return flowDTO;
+        }
+
+        flowDTO = flowRepository.findById(flowId)
+                .orElseThrow(() -> new FlowNotFound("The flow is not found"))
+                .convertToDTO();
+
+        isUserAllowed(flowDTO.getOwnerId(), userId);
+
+        try {
+            String redisKey = getRedisKey(projectId);
+            String stringDTO = objectMapper.writeValueAsString(flowDTO);
+
+            redisTemplate.opsForHash().put(redisKey, flowId, stringDTO);
+            redisTemplate.opsForHash().put(redisKey, "FULL_LIST", "false");
+            updateExpire(redisKey);
+        } catch (Exception e) {
+            log.error("Failed to fetch the json object: getCachedFlow Exception: ", e);
+        }
+
+        return flowDTO;
+    }
+
+    /**
+     *
+     * @param projectId - The project ID for the redis key
+     * @return - Returns all the flows that attached to the projectId. If the list is empty, returns null
+     *  If the STATUS flag is EMPTY -> empty list
+     */
+    public List<FlowDTO> getProjectCachedFlows(String projectId) {
+        String redisKey = getRedisKey(projectId);
+        Map<Object, Object> entries = redisTemplate.opsForHash().entries(redisKey);
+
+        if(entries == null || entries.isEmpty())
+            return null;
+
+        if("EMPTY".equals(entries.get("STATUS")))
+            return new ArrayList<>();
+
+        if (!"true".equals(entries.get("FULL_LIST")))
+            return null;
+
+
+        entries.remove("FULL_LIST");
+        entries.remove("STATUS");
+
+        return entries.values().stream().map(v -> {
+            try {
+                return objectMapper.readValue((String) v, FlowDTO.class);
+            } catch (Exception e) {
+                log.error("Failed to parse project JSON", e);
+                return null;
+            }
+        })
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     *
+     * @param flowUserId - The owner of the flow
+     * @param currentUserId - The current logged in user
+     *                      This function checks if the current user is allowed to edit/delete/view the flow
+     */
     public void isUserAllowed(String flowUserId, String currentUserId){
         if(!flowUserId.equals(currentUserId))
             throw new UserNotAllowedException("User is not allowed to access flow");
@@ -78,21 +253,10 @@ public class FlowService {
                 .withLastModified(Instant.now())
                 .build();
 
-        return flowRepository.save(flow).convertToDTO();
-    }
+        FlowDTO newFlowDTO = flowRepository.save(flow).convertToDTO();
+        updateCachedFlow(newFlowDTO);
 
-    /**
-     *
-     * @param flowId - The flow id
-     * @param userId - The current user ID
-     * @return - Returns the flow information by its ID
-     */
-    public FlowDTO getFlow(String flowId, String userId){
-        Flow flow = this.findById(flowId);
-
-        isUserAllowed(flow.getOwnerId(), userId);
-
-        return flow.convertToDTO();
+        return newFlowDTO;
     }
 
     /**
@@ -101,12 +265,43 @@ public class FlowService {
      * @param userId - The current user ID
      * @return - All the flows of the project with projectId
      */
-    public List<FlowDTO> getFlowsByProjectId(String projectId, String userId){
-        Project project = projectService.findById(projectId, userId);
+    public List<FlowDTO> getFlowsByProjectId(String projectId, String userId) {
+        projectService.findById(projectId, userId);
 
-        List<Flow> flows = flowRepository.findByProjectId(projectId);
+        List<FlowDTO> flowDTOList = getProjectCachedFlows(projectId);
 
-        return flows.stream().map(f -> f.convertToDTO()).toList();
+        if (flowDTOList != null) {
+            return flowDTOList;
+        }
+
+        String redisKey = getRedisKey(projectId);
+        Map<Object, Object> cachedFlowsMap = new HashMap<>();
+
+        List<Flow> flowsList = flowRepository.findByProjectId(projectId);
+
+        flowDTOList = flowsList.stream().map(flow -> {
+            FlowDTO currentDTO = flow.convertToDTO();
+            try {
+                String stringFlowDTO = objectMapper.writeValueAsString(currentDTO);
+                cachedFlowsMap.put(flow.getId(), stringFlowDTO);
+            } catch (Exception e) {
+                log.error("Failed to parse flow JSON for flowId: " + flow.getId(), e);
+            }
+            return currentDTO;
+        }).collect(Collectors.toList());
+
+        if (flowDTOList.isEmpty()) {
+            redisTemplate.opsForHash().put(redisKey, "STATUS", "EMPTY");
+            redisTemplate.opsForHash().delete(redisKey, "FULL_LIST");
+        } else {
+            redisTemplate.delete(redisKey);
+            redisTemplate.opsForHash().putAll(redisKey, cachedFlowsMap);
+            setFullListCachedStatus(projectId,  cachedFlowsMap.size() == flowsList.size());
+        }
+
+        updateExpire(redisKey);
+
+        return flowDTOList;
     }
 
     /**
@@ -116,8 +311,7 @@ public class FlowService {
      * @return - Returns the flow steps
      */
     public FlowStepsResponse getFlowSteps(String flowId, String userId){
-        FlowStepsProjection stepsProjection = findStepsProjectedById(flowId);
-        isUserAllowed(stepsProjection.getOwnerId(), userId);
+        FlowStepsProjection stepsProjection = findStepsProjectedById(flowId, userId);
 
         FlowStepsResponse stepsResponse = new FlowStepsResponse(stepsProjection.getSteps(), stepsProjection.getFallbacks());
         return stepsResponse;
@@ -131,27 +325,45 @@ public class FlowService {
      *  This function adds new step to the flow with the flowId
      */
     public String addStep(String flowId, StepRequest stepRequest, String userId){
-        FlowStepsProjection stepsProjection = findStepsProjectedById(flowId);
-        isUserAllowed(stepsProjection.getOwnerId(), userId);
+        FlowStepsProjection stepsProjection = findStepsProjectedById(flowId, userId);
+
         String stepUUID = UUID.randomUUID().toString();
         Step step = stepRequest.getStep();
         String fieldName = stepRequest.getStepGroup().toDbField();
 
         step.setId(stepUUID);
 
-        Query query = new Query(Criteria.where("id").is(flowId));
-        Update update = new Update().push(fieldName, step)
-                .set("lastModified", Instant.now());
+        Update update = new Update().push(fieldName, step);
 
-        mongoTemplate.updateFirst(query, update, Flow.class);
+        updateFlowInternals(update, stepsProjection.getId(), stepsProjection.getProjectId(), null);
 
         return stepUUID;
     }
 
     public void deleteFlow(String flowId, String userId){
-        findOwnerIdProjectedById(flowId, userId);
+        FlowOwnerIdProjection flowOwnerIdProjection = findOwnerIdProjectedById(flowId, userId);
 
         flowRepository.deleteById(flowId);
+
+        String projectId =  flowOwnerIdProjection.getProjectId();
+        String redisKey = getRedisKey(projectId);
+
+        try {
+            redisTemplate.opsForHash().delete(redisKey, flowId);
+
+            if (!flowRepository.existsByProjectId(projectId)) {
+                redisTemplate.opsForHash().put(redisKey, "STATUS", "EMPTY");
+                redisTemplate.opsForHash().delete(redisKey, "FULL_LIST");
+            } else {
+                setFullListCachedStatus(projectId, false);
+            }
+
+            updateExpire(redisKey);
+
+        } catch (Exception e) {
+            log.error("Failed to update cache during deleteFlow for flowId: " + flowId, e);
+            setFullListCachedStatus(projectId, false);
+        }
     }
 
     /**
@@ -160,6 +372,16 @@ public class FlowService {
      */
     public void deleteFlowByProjectId(String projectId){
         flowRepository.deleteByProjectId(projectId);
+
+        String redisKey = getRedisKey(projectId);
+        try {
+            redisTemplate.delete(redisKey);
+            redisTemplate.opsForHash().put(redisKey, "STATUS", "EMPTY");
+            updateExpire(redisKey);
+
+        } catch (Exception e) {
+            log.error("Failed to clear flows cache for projectId: " + projectId, e);
+        }
     }
 
     /**
@@ -169,31 +391,35 @@ public class FlowService {
      * @param userId - The current user ID
      */
     public void deleteStep(String flowId, String stepId, String userId){
-        FlowStepsProjection stepsProjection = findStepsProjectedById(flowId);
-        isUserAllowed(stepsProjection.getOwnerId(), userId);
+        FlowStepsProjection stepsProjection = findStepsProjectedById(flowId, userId);
 
-        Query query = new Query(Criteria.where("id").is(flowId));
-        Update update = new Update().pull("steps", Query.query(Criteria.where("id").is(stepId)))
-                .set("lastModified", Instant.now());
+        Update update = new Update().pull("steps", Query.query(Criteria.where("id").is(stepId)));
 
-        mongoTemplate.updateFirst(query, update, Flow.class);
+        updateFlowInternals(update, stepsProjection.getId(), stepsProjection.getProjectId(), null);
 
     }
 
+    /**
+     *
+     * @param flowId - The flow ID
+     * @param stepRequest - The updated step data
+     * @param userId - The current user that logged in
+     */
     public void editStep(String flowId, StepRequest stepRequest, String userId){
-        FlowStepsProjection stepsProjection = findStepsProjectedById(flowId);
-        isUserAllowed(stepsProjection.getOwnerId(), userId);
+        FlowStepsProjection stepsProjection = findStepsProjectedById(flowId, userId);
 
         String stepField = stepRequest.getStepGroup().toDbField();
         Step step = stepRequest.getStep();
 
-        Query query = new Query(Criteria.where("id").is(flowId).and(stepField+".id").is(step.getId()));
-        Update update = new Update();
+        Criteria stepCriteria =  Criteria.where("id").is(flowId).and(stepField+".id").is(step.getId());
+        Update update = new Update()
+                .set(stepField+".$",  step);
 
-        update.set(stepField+".$",  step)
-                .set("lastModified", Instant.now());
 
-        mongoTemplate.updateFirst(query, update, Flow.class);
+        updateFlowInternals(update,
+                stepsProjection.getId(),
+                stepsProjection.getProjectId(),
+                stepCriteria);
     }
 
     /**
@@ -212,36 +438,68 @@ public class FlowService {
                 .set("globalHeaders", flowEditInput.getGlobalHeaders())
                 .set("lastModified", Instant.now());
 
+        FindAndModifyOptions options = new FindAndModifyOptions().returnNew(true);
 
-        mongoTemplate.updateFirst(query, update, Flow.class);
+        Flow flow = mongoTemplate.findAndModify(query, update, options, Flow.class);
+
+        if(flow != null)
+            updateCachedFlow(flow.convertToDTO());
     }
 
+    /**
+     *
+     * @param setGlobalsRequest - contains the globals map and the field that these globals attached to
+     * @param flowId - The flow ID
+     * @param userId - The current user ID
+     */
     public void setGlobals(SetGlobalsRequest setGlobalsRequest, String flowId, String userId){
-        findOwnerIdProjectedById(flowId, userId);
+        FlowOwnerIdProjection flowOwnerIdProjection = findOwnerIdProjectedById(flowId, userId);
 
         String fieldName = setGlobalsRequest.getFieldName().toDbName();
 
-        Query query = new Query(Criteria.where("id").is(flowId));
-        Update update = new Update().set(fieldName, setGlobalsRequest.getGlobals())
-                .set("lastModified", Instant.now());
+        Update update = new Update().set(fieldName, setGlobalsRequest.getGlobals());
 
-        mongoTemplate.updateFirst(query, update, Flow.class);
+        updateFlowGlobalsAndSyncCache(update, flowOwnerIdProjection.getId(), flowOwnerIdProjection.getProjectId(), null);
     }
 
-    private FlowStepsProjection findStepsProjectedById(String flowId) {
-        return flowRepository.findStepsProjectedById(flowId)
+    /**
+     *
+     * @param flowId - The flow ID
+     * @param userId - The current user ID
+     * @return - Projected the flow steps
+     */
+    private FlowStepsProjection findStepsProjectedById(String flowId, String userId) {
+        FlowStepsProjection flowStepsProjection =  flowRepository.findStepsProjectedById(flowId)
                 .orElseThrow(() -> new FlowNotFound("This flow is not exists!"));
+
+        isUserAllowed(flowStepsProjection.getOwnerId(), userId);
+
+        return flowStepsProjection;
     }
 
-    private void findOwnerIdProjectedById(String flowId, String userId) {
+    /**
+     *
+     * @param flowId - The flow ID
+     * @param userId - The current user ID
+     * @return - Flow data with owner id projected
+     */
+    private FlowOwnerIdProjection findOwnerIdProjectedById(String flowId, String userId) {
         FlowOwnerIdProjection flowOwnerIdProjection = flowRepository.findOwnerIdProjectedById(flowId)
                 .orElseThrow(() -> new FlowNotFound("This flow is not exists!"));
         isUserAllowed(flowOwnerIdProjection.getOwnerId(), userId);
+
+        return flowOwnerIdProjection;
     }
 
+    /**
+     *
+     * @param flowId - The flow ID
+     * @param fallbackId - The fallback ID which will be deleted
+     * @param userId - The current user that logged in
+     */
     public void deleteFallback(String flowId, String fallbackId, String userId){
-        FlowStepsProjection stepsProjection = findStepsProjectedById(flowId);
-        isUserAllowed(stepsProjection.getOwnerId(), userId);
+        FlowStepsProjection stepsProjection = findStepsProjectedById(flowId, userId);
+
         Query query = new Query(Criteria.where("id").is(flowId));
 
         MongoExpression updateStepsExpression = () -> Document.parse(
@@ -258,15 +516,18 @@ public class FlowService {
                         "}}"
         );
 
+        Instant newTime = Instant.now();
+
         AggregationUpdate update = AggregationUpdate.update()
                 .set("fallbacks").toValue((MongoExpression) () -> Document.parse(
                         "{$filter: { input: '$fallbacks', as: 'fb', cond: {$ne: ['$$fb._id', '" + fallbackId + "']} }}"
                 ))
                 .set("steps").toValue(updateStepsExpression)
-                .set("lastModified").toValue(Instant.now());
-
+                .set("lastModified").toValue(newTime);
 
         mongoTemplate.updateFirst(query, update, Flow.class);
+
+        updateLastModifiedInCache(stepsProjection.getId(), stepsProjection.getProjectId(), newTime);
 
     }
 
@@ -277,8 +538,7 @@ public class FlowService {
      * This function add a step between two steps
      */
     public void syncCanvasSteps(String flowId, String userId, SyncStepsRequest syncStepsRequest){
-        FlowStepsProjection stepsProjection = findStepsProjectedById(flowId);
-        isUserAllowed(stepsProjection.getOwnerId(), userId);
+        FlowStepsProjection stepsProjection = findStepsProjectedById(flowId, userId);
 
         List<Step> steps = stepsProjection.getSteps();
 
@@ -295,7 +555,6 @@ public class FlowService {
             Step currentStep = stepMap.remove(currentStepId);
 
             if (currentStep == null) {
-                // שים לב לבדיקה הנוספת: stepToAdd != null
                 if (stepToAdd != null && !isNewStepAdded) {
                     stepToAdd.setId(currentStepId);
                     currentStep = stepToAdd;
@@ -313,11 +572,54 @@ public class FlowService {
             throw new BadRequestException("Missing existing steps in request!");
         }
 
-        Query query = new Query(Criteria.where("id").is(flowId));
-        Update update = new Update().set("steps", newOrderSteps)
-                        .set("lastModified", Instant.now());
+        Update update = new Update().set("steps", newOrderSteps);
+
+        updateFlowInternals(update, stepsProjection.getId(), stepsProjection.getProjectId(), null);
+    }
+
+    /**
+     * An help function to DRY code the mongo template update fields
+     * @param update - The update query
+     * @param flowId - The flow ID
+     * @param projectId - The project ID for the redis key
+     * @param additionalCriteria - Some additional criteria (Can be null)
+     */
+    public void updateFlowInternals(Update update, String flowId, String projectId, Criteria additionalCriteria){
+        Criteria baseCriteria = Criteria.where("id").is(flowId);
+
+        Query query = (additionalCriteria != null)
+                ? new Query(new Criteria().andOperator(baseCriteria, additionalCriteria))
+                : new Query(baseCriteria);
+
+        Instant newTime = Instant.now();
+
+        update.set("lastModified", newTime);
+
 
         mongoTemplate.updateFirst(query, update, Flow.class);
+        updateLastModifiedInCache(flowId, projectId, newTime);
+    }
+
+
+    public void updateFlowGlobalsAndSyncCache(Update update, String flowId, String projectId, Criteria additionalCriteria){
+        Criteria baseCriteria = Criteria.where("id").is(flowId);
+
+        Query query = (additionalCriteria != null)
+                ? new Query(new Criteria().andOperator(baseCriteria, additionalCriteria))
+                : new Query(baseCriteria);
+
+        Instant newTime = Instant.now();
+
+        update.set("lastModified", newTime);
+
+        FindAndModifyOptions options = new FindAndModifyOptions().returnNew(true);
+
+        Flow flow = mongoTemplate.findAndModify(query, update, options, Flow.class);
+        if(flow != null) {
+            flow.setLastModified(newTime);
+            updateCachedFlow(flow.convertToDTO());
+        }
+
     }
 
     public enum StepGroup{
