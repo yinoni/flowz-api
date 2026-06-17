@@ -109,8 +109,8 @@ public class AuthService {
         if(splitRefreshToken.length != 2)
             throw new AuthenticationException("Invalid refresh token!", HttpStatus.BAD_REQUEST);
 
-        String refreshToken = splitRefreshToken[0];
-        String userId = splitRefreshToken[1];
+        String refreshToken = splitRefreshToken[0].trim();
+        String userId = splitRefreshToken[1].trim();
 
         validateRefreshToken(refreshToken, userId);
         User user = userRepository.findById(userId).orElseThrow(() -> new UserNotAllowedException("User not found!"));
@@ -193,19 +193,29 @@ public class AuthService {
         return String.format("%04d", code);
     }
 
-    public void logout(String userId, String clientRefreshToken){
+    public void logout(String clientRefreshToken) {
         if (clientRefreshToken == null || clientRefreshToken.isEmpty()) {
             return;
         }
 
         String[] splitRefreshToken = clientRefreshToken.split(":");
-        if(splitRefreshToken.length != 2)
+        if (splitRefreshToken.length != 2) {
             throw new AuthenticationException("Invalid refresh token!", HttpStatus.BAD_REQUEST);
+        }
 
         String refreshToken = splitRefreshToken[0];
-        validateRefreshToken(refreshToken, userId);
+        String userId = splitRefreshToken[1];
 
-        redisTemplate.delete(REDIS_REFRESH_TOKEN + refreshToken);
+        String redisKey = REDIS_REFRESH_TOKEN + refreshToken;
+        String redisValue = (String) redisTemplate.opsForValue().get(redisKey);
 
+        // ⚡ התיקון: בדיקה אם המפתח בכלל קיים ב-Redis, והשוואה בטוחה מרווחים/Null
+        if (redisValue == null || !redisValue.equals(userId)) {
+            // שיניתי גם את הודעת השגיאה למשהו שקשור לטוקן ולא ל-"verification code" (כנראה העתקה מפונקציה אחרת)
+            throw new AuthenticationException("Refresh token expired or invalid!", HttpStatus.UNAUTHORIZED);
+        }
+
+        // מחיקה בטוחה מ-Redis
+        redisTemplate.delete(redisKey);
     }
 }

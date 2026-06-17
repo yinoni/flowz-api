@@ -36,6 +36,7 @@ public class Flow {
     public FlowDTO convertToDTO() {
         return aFlowDTO()
                 .withFlowName(this.flowName)
+                .withOwnerId(this.ownerId)
                 .withId(this.id)
                 .withProjectId(this.projectId)
                 .withGlobalURL(this.globalURL)
