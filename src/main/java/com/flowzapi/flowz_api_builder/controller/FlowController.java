@@ -83,7 +83,7 @@ public class FlowController {
     }
 
     @PatchMapping("/steps/{flowId}/sync")
-    public ResponseEntity<?> reorderSteps(@RequestBody SyncStepsRequest stepsRequest, @PathVariable String flowId, @AuthenticationPrincipal CustomUserDetails customUserDetails) {
+    public ResponseEntity<?> syncSteps(@RequestBody SyncStepsRequest stepsRequest, @PathVariable String flowId, @AuthenticationPrincipal CustomUserDetails customUserDetails) {
         flowService.syncCanvasSteps(flowId, customUserDetails.getId(), stepsRequest);
 
         return ResponseEntity.ok("Steps reordered added");
