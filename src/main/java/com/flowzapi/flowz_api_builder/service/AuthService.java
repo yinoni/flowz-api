@@ -152,7 +152,7 @@ public class AuthService {
             }
         }
 
-        return this.signup(new SignUpRequest(email, password, username), true);
+        return this.signup(new SignUpRequest(email, username, password), true);
     }
 
     public String validateVerificationCode(String verificationCode, String userId){
