@@ -1,22 +1,18 @@
 version: '3.8'
 
 services:
-  flowz-backend:
-    container_name: flowz-backend
-    image: yinoni2212/flowz-backend:latest
-    build:
-      context: .
-      dockerfile: Dockerfile
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq-flowz
     ports:
-      - 8080:8080
+      - "5672:5672"
+      - "15672:15672"
     environment:
-      - MONGODB_URL=${MONGODB_URL}
-      - REDIS_HOST=${REDIS_HOST}
-      - REDIS_PORT=${REDIS_PORT}
-      - REDIS_PASS=${REDIS_PASS}
-      - GOOGLE_OAUTH_ID=${GOOGLE_OAUTH_ID}
-      - SMTP_USER=${SMTP_USER}
-      - SMTP_PASS=${SMTP_PASS}
-      - JWT_SECRET=${JWT_SECRET}
-      - SPRING_DATA_REDIS_SSL_ENABLED=true
+      - RABBITMQ_DEFAULT_USER=guest
+      - RABBITMQ_DEFAULT_PASS=guest
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
     restart: always
+
+volumes:
+  rabbitmq_data:

@@ -78,8 +78,7 @@ public class FlowExecutionService {
         return executionID;
     }
 
-    @Async
-    public void executeFlow(String executionID, String userID){
+    public void executeFlow(String executionID, String userID) throws Exception {
         try{
             String redisValue = (String) redisTemplate.opsForValue().get(REDIS_EXECUTION_ID_KEY + executionID);
             if(redisValue == null) {

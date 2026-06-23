@@ -10,6 +10,7 @@ import com.flowzapi.flowz_api_builder.model.authentication.AuthenticationRespons
 import com.flowzapi.flowz_api_builder.model.authentication.SignUpRequest;
 import com.flowzapi.flowz_api_builder.model.user.CustomUserDetails;
 import com.flowzapi.flowz_api_builder.model.user.UserDTO;
+import com.flowzapi.flowz_api_builder.rabbitMQ.EmailPublisher;
 import com.flowzapi.flowz_api_builder.repos.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -38,10 +39,16 @@ public class AuthService {
     private final RedisTemplate redisTemplate;
     private final String VERIFICATION_KEY_REDIS = "verificationKey:";
     private final String REDIS_REFRESH_TOKEN = "refreshToken:";
-    private final EmailService emailService;
     private final ObjectMapper objectMapper;
+    private final EmailPublisher emailPublisher;
 
 
+    /**
+     *
+     * @param request - The auth request (contains the email and password)
+     * @return - AuthenticationResponse Object that contains the access token and refresh token
+     * @throws AuthenticationException
+     */
     public AuthenticationResponse login(AuthenticationRequest request) throws AuthenticationException {
 
         Authentication authentication = authenticationManager.authenticate(
@@ -65,6 +72,12 @@ public class AuthService {
         return new AuthenticationResponse(refreshToken, accessToken);
     }
 
+    /**
+     *
+     * @param request - The signup request - contains the username, email and password of the new user
+     * @param withGoogle - Boolean flag - if true -> logged in using Google OAuth2. if false -> else
+     * @return - AuthenticationResponse Object that contains the access token and refresh token
+     */
     public AuthenticationResponse signup(SignUpRequest request, boolean withGoogle){
         Optional<User> lookupUser = userRepository.findByEmail(request.getEmail());
 
@@ -90,6 +103,11 @@ public class AuthService {
         return new AuthenticationResponse(refreshToken, accessToken);
     }
 
+    /**
+     *
+     * @param userId - The current user id
+     * @return - New refresh token with the user id and saves it in Redis
+     */
     private String createRefreshToken(String userId){
         String refreshToken = UUID.randomUUID().toString();
         String redisKey = REDIS_REFRESH_TOKEN + refreshToken;
@@ -99,6 +117,11 @@ public class AuthService {
         return refreshToken + ":" + userId;
     }
 
+    /**
+     *
+     * @param clientRefreshToken - The client refresh token
+     * @return - New access token if the refresh token is valid
+     */
     public String refresh(String clientRefreshToken){
 
         if (clientRefreshToken == null || clientRefreshToken.isEmpty()) {
@@ -118,6 +141,12 @@ public class AuthService {
         return jwtService.generateToken(user);
     }
 
+    /**
+     *
+     * @param refreshToken - The refresh token
+     * @param userId - The current user ID
+     * This function verifies the refresh token and make sure that it belongs to the current user
+     */
     private void validateRefreshToken(String refreshToken, String userId){
         String redisKey = REDIS_REFRESH_TOKEN + refreshToken;
         String redisValue = (String) redisTemplate.opsForValue().get(redisKey);
@@ -126,13 +155,25 @@ public class AuthService {
             throw new AuthenticationException("Refresh token expired or invalid!", HttpStatus.UNAUTHORIZED);
     }
 
+    /**
+     *
+     * @param userId - The current user ID
+     * @param email - The current user email
+     * This function generates new verification code, saves it in Redis with the user ID and publish an event for RabbitMQ
+     * consumers
+     */
     private void sendVerificationCode(String userId, String email){
         String verificationCode = generate4DigitCode();
         redisTemplate.opsForValue().set(VERIFICATION_KEY_REDIS + userId, verificationCode, 2, TimeUnit.MINUTES);
         System.out.println("The code is ====> " + verificationCode);
-        emailService.sendVerificationEmail(email, verificationCode);
+        emailPublisher.sendVerificationCodePublisher(email, verificationCode);
     }
 
+    /**
+     *
+     * @param userData - The user data payload from the OAuth2 response
+     * @return - New refresh and access token
+     */
     public AuthenticationResponse authenticateWithGoogle(Map<String, String> userData){
         String email = userData.get("email");
         String username = userData.get("username");
@@ -155,6 +196,12 @@ public class AuthService {
         return this.signup(new SignUpRequest(email, username, password), true);
     }
 
+    /**
+     *
+     * @param verificationCode - Verification code
+     * @param userId - The user ID
+     * @return - New access token if the verification code is valid
+     */
     public String validateVerificationCode(String verificationCode, String userId){
         String redisKey = VERIFICATION_KEY_REDIS + userId;
         String valueFromRedis =  (String) redisTemplate.opsForValue().get(redisKey);
@@ -176,6 +223,12 @@ public class AuthService {
         return jwtService.generateToken(user);
     }
 
+    /**
+     *
+     * @param userId - The user ID
+     * @param email - The user email
+     * This function generates new verification code if the old one is expired and sends it via email
+     */
     public void resendVerificationCode(String userId, String email) {
         String redisKey = VERIFICATION_KEY_REDIS + userId;
         String valueFromRedis = (String) redisTemplate.opsForValue().get(redisKey);
@@ -184,15 +237,22 @@ public class AuthService {
             throw new InvalidVerificationException("The verification code has not expired!");
 
         sendVerificationCode(userId, email);
-
-        //Send an email with the verification code here Or send an event using kafka or webhooks or something else
     }
 
+    /**
+     *
+     * @return - generate and return 4-digit code
+     */
     public String generate4DigitCode(){
         int code = new Random().nextInt(10000);
         return String.format("%04d", code);
     }
 
+    /**
+     *
+     * @param clientRefreshToken - The client refresh token
+     * This function handles all the logout logic (Delete the refresh token from Redis)
+     */
     public void logout(String clientRefreshToken) {
         if (clientRefreshToken == null || clientRefreshToken.isEmpty()) {
             return;

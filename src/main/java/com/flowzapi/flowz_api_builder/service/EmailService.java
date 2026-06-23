@@ -14,6 +14,11 @@ public class EmailService {
     private String emailSender;
     private final JavaMailSender mailSender;
 
+    /**
+     *
+     * @param toEmail - The destination email
+     * @param verificationCode - The verification code
+     */
     public void sendVerificationEmail(String toEmail, String verificationCode) {
         SimpleMailMessage message = new SimpleMailMessage();
         message.setFrom(emailSender);
