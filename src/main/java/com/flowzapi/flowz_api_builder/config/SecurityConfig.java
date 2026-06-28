@@ -46,8 +46,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .dispatcherTypeMatchers(DispatcherType.ASYNC).permitAll()
                         .requestMatchers(org.springframework.http.HttpMethod.OPTIONS, "/**").permitAll()
-                        .requestMatchers("/auth/register", "/auth/login", "/auth/google", "/auth/refresh", "/auth/logout", "/ws-flow/**",
-                                "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
+                        .requestMatchers("/auth/register", "/auth/login", "/auth/google", "/auth/refresh", "/auth/logout", "/ws-flow/**").permitAll()
                         .anyRequest().authenticated()
                 )
 
