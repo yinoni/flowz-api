@@ -36,8 +36,15 @@ public class GlobalExceptionHandler {
         e.getBindingResult().getFieldErrors().forEach(error ->
                 errors.put(error.getField(), error.getDefaultMessage())
         );
-        ErrorResponse errorResponse = new ErrorResponse(errors.toString(), HttpStatus.FORBIDDEN, LocalDateTime.now());
+        ErrorResponse errorResponse = new ErrorResponse(errors.toString(), HttpStatus.BAD_REQUEST, LocalDateTime.now());
 
         return new ResponseEntity<>(errorResponse, errorResponse.getStatus());
+    }
+
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<?> handleUnexpected(Exception e) {
+        log.error("Unhandled exception", e);
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(new ErrorResponse("An unexpected error occurred", HttpStatus.INTERNAL_SERVER_ERROR, LocalDateTime.now()));
     }
 }

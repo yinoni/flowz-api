@@ -13,11 +13,11 @@ import org.springframework.stereotype.Service;
 public class FlowPublisherService {
     private final RabbitTemplate rabbitTemplate;
 
-    public void publishFlowExecution(String userId, String flowId) {
-        FlowExecutionEvent event = new FlowExecutionEvent(userId, flowId);
+    public void publishFlowExecution(String userId, String flowId, String executionId) {
+        FlowExecutionEvent event = new FlowExecutionEvent(userId, flowId, executionId);
 
-        log.info("Pushing Flow {} to RabbitMQ for user {}", flowId, userId);
+        rabbitTemplate.convertAndSend("", RabbitMQConfig.QUEUE_FLOWS, event);
 
-        rabbitTemplate.convertAndSend(RabbitMQConfig.FLOWS_EXCHANGE, RabbitMQConfig.ROUTING_KEY_FLOWS, event);
+        log.info("Execution id {} published to RabbitMQ for user {}", executionId, userId);
     }
 }

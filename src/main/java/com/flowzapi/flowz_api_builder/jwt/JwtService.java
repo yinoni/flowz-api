@@ -19,8 +19,6 @@ import java.util.Date;
 public class JwtService {
 
 
-    private final String SECRET_KEY = "my_super_secret_key_that_should_be_long_and_stored_in_application_properties";
-
     private final Algorithm algorithm;
 
     private final JWTVerifier verifier;
@@ -28,7 +26,6 @@ public class JwtService {
     public JwtService(@Value("${jwt.secret}") String secret) {
         this.algorithm = Algorithm.HMAC256(secret);
 
-        // בנייה חד-פעמית של שומר הסף של הטוקנים
         this.verifier = JWT.require(algorithm)
                 .withIssuer("flowz-api")
                 .build();
@@ -43,7 +40,7 @@ public class JwtService {
                 .withClaim("username", user.getUsername())
                 .withClaim("verified",  user.isVerified())
                 .withIssuedAt(new Date())
-                .withExpiresAt(new Date(System.currentTimeMillis() + EXPIRATION_TIME)) // בתוקף ל-24 שעות
+                .withExpiresAt(new Date(System.currentTimeMillis() + EXPIRATION_TIME))
                 .withIssuer("flowz-api")
                 .sign(algorithm);
     }
@@ -55,7 +52,7 @@ public class JwtService {
                 .withClaim("username", user.getUsername())
                 .withClaim("verified",  user.isVerified())
                 .withIssuedAt(new Date())
-                .withExpiresAt(new Date(System.currentTimeMillis() + EXPIRATION_TIME)) // בתוקף ל-24 שעות
+                .withExpiresAt(new Date(System.currentTimeMillis() + EXPIRATION_TIME))
                 .withIssuer("flowz-api")
                 .sign(algorithm);
     }
@@ -82,7 +79,7 @@ public class JwtService {
             return claim.as(clazz);
 
         } catch (JWTVerificationException exception) {
-            return null; // הטוקן פג תוקף או מזויף
+            return null;
         }
     }
 

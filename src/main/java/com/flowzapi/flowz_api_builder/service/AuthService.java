@@ -13,6 +13,7 @@ import com.flowzapi.flowz_api_builder.model.user.UserDTO;
 import com.flowzapi.flowz_api_builder.rabbitMQ.EmailPublisher;
 import com.flowzapi.flowz_api_builder.repos.UserRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -24,11 +25,13 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import tools.jackson.databind.ObjectMapper;
 
+import java.security.SecureRandom;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 
 import static com.flowzapi.flowz_api_builder.model.UserBuilder.anUser;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class AuthService {
@@ -62,7 +65,7 @@ public class AuthService {
                 resendVerificationCode(customUserDetails.getId(), customUserDetails.getEmail());
             }
             catch(InvalidVerificationException e){
-                System.out.println("There is already available code");
+               log.error("There is already available code");
             }
         }
 
@@ -165,7 +168,6 @@ public class AuthService {
     private void sendVerificationCode(String userId, String email){
         String verificationCode = generate4DigitCode();
         redisTemplate.opsForValue().set(VERIFICATION_KEY_REDIS + userId, verificationCode, 2, TimeUnit.MINUTES);
-        System.out.println("The code is ====> " + verificationCode);
         emailPublisher.sendVerificationCodePublisher(email, verificationCode);
     }
 
@@ -244,7 +246,7 @@ public class AuthService {
      * @return - generate and return 4-digit code
      */
     public String generate4DigitCode(){
-        int code = new Random().nextInt(10000);
+        int code = new SecureRandom().nextInt(10000);
         return String.format("%04d", code);
     }
 

@@ -5,6 +5,7 @@ import com.flowzapi.flowz_api_builder.exception.FlowNotFound;
 import com.flowzapi.flowz_api_builder.exception.SyncException;
 import com.flowzapi.flowz_api_builder.exception.UserNotAllowedException;
 import com.flowzapi.flowz_api_builder.model.Flow;
+import com.flowzapi.flowz_api_builder.model.FlowBuilder;
 import com.flowzapi.flowz_api_builder.model.Project;
 import com.flowzapi.flowz_api_builder.model.Step;
 import com.flowzapi.flowz_api_builder.model.flow.*;
@@ -44,6 +45,7 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 import static com.flowzapi.flowz_api_builder.model.FlowBuilder.aFlow;
+import static com.flowzapi.flowz_api_builder.model.StepBuilder.aStep;
 
 @Slf4j
 @Service
@@ -55,10 +57,7 @@ public class FlowService {
     private final RedisTemplate redisTemplate;
     private final String FLOW_REDIS_KEY = "project-flows:";
     private final Duration GLOBAL_DURATION =  Duration.ofHours(1);
-
-    @Lazy
-    @Autowired
-    private ObjectMapper objectMapper;
+    private final ObjectMapper objectMapper;
 
     /**
      *
@@ -483,7 +482,7 @@ public class FlowService {
      * @param userId - The current user ID
      * @return - Flow data with owner id projected
      */
-    private FlowOwnerIdProjection findOwnerIdProjectedById(String flowId, String userId) {
+    public FlowOwnerIdProjection findOwnerIdProjectedById(String flowId, String userId) {
         FlowOwnerIdProjection flowOwnerIdProjection = flowRepository.findOwnerIdProjectedById(flowId)
                 .orElseThrow(() -> new FlowNotFound("This flow is not exists!"));
         isUserAllowed(flowOwnerIdProjection.getOwnerId(), userId);
@@ -502,6 +501,8 @@ public class FlowService {
 
         Query query = new Query(Criteria.where("id").is(flowId));
 
+        Document condDoc = new Document("$ne", List.of("$$this.v", fallbackId));
+
         MongoExpression updateStepsExpression = () -> Document.parse(
                 "{$map: {" +
                         "  input: '$steps'," +
@@ -510,7 +511,7 @@ public class FlowService {
                         "    '$$step'," +
                         "    {routes: {$arrayToObject: {$filter: {" +
                         "      input: {$objectToArray: '$$step.routes'}," +
-                        "      cond: {$ne: ['$$this.v', '" + fallbackId + "']}" +
+                        "      cond: " + condDoc.toJson() + // <--- מוזרק כ-JSON מובנה ובטוח של מונגו
                         "    }}}}" +
                         "  ]}" +
                         "}}"
@@ -518,9 +519,11 @@ public class FlowService {
 
         Instant newTime = Instant.now();
 
+        Document filterDoc = new Document("$ne", List.of("$$fb._id", fallbackId));
+
         AggregationUpdate update = AggregationUpdate.update()
                 .set("fallbacks").toValue((MongoExpression) () -> Document.parse(
-                        "{$filter: { input: '$fallbacks', as: 'fb', cond: {$ne: ['$$fb._id', '" + fallbackId + "']} }}"
+                        "{$filter: { input: '$fallbacks', as: 'fb', cond: " + filterDoc.toJson() + " }}"
                 ))
                 .set("steps").toValue(updateStepsExpression)
                 .set("lastModified").toValue(newTime);
@@ -620,6 +623,68 @@ public class FlowService {
             updateCachedFlow(flow.convertToDTO());
         }
 
+    }
+
+    public Flow createMockupFlow(String projectId, String userId){
+        Project project = projectService.findById(projectId, userId);
+
+        String globalURL = "https://dummyjson.com";
+        FlowBuilder flowBuilder = aFlow()
+                .withFlowName("DEMO-FLOW")
+                .withOwnerId(userId)
+                .withProjectId(projectId)
+                .withGlobalURL(globalURL)
+                .withGlobalHeaders(Map.of("Content-Type", "application/json", "Authorization", "Bearer {{token}}"))
+                .withLastModified(Instant.now())
+                .withGlobalAssertions(new HashMap<>())
+                .withGlobalVariables(Map.of("username", "emilys", "password", "emilyspass"))
+                .withFallbacks(new ArrayList<>());
+
+        Step loginStep = aStep()
+                .withUrl(globalURL+"/auth/login")
+                .withTitle("LOGIN-DEMO-STEP")
+                .withId(UUID.randomUUID().toString())
+                .withHttpMethod("POST")
+                .withHeaders(Map.of())
+                .withBody("{\"username\": \"{{username}}\", \"password\": \"{{password}}\"}")
+                .withExtract(Map.of("jwtToken", "accessToken", "userId", "id"))
+                .withAssertions(new HashMap<>())
+                .withRoutes(new HashMap<>())
+                .withPosition(new Step.Position(80, 80))
+                .build();
+
+        Step addPostStep = aStep()
+                .withUrl(globalURL+"/posts/add")
+                .withTitle("ADD-POST-DEMO-STEP")
+                .withId(UUID.randomUUID().toString())
+                .withHttpMethod("POST")
+                .withHeaders(Map.of())
+                .withBody("{\"title\": \"This is my first mock post!\", \"userId\": \"{{userId}}\"}")
+                .withExtract(Map.of("postId", "id"))
+                .withAssertions(new HashMap<>())
+                .withRoutes(new HashMap<>())
+                .withPosition(new Step.Position(520, 300))
+                .build();
+
+        Step getUserPosts = aStep()
+                .withUrl(globalURL+"/users/{{userId}}/posts")
+                .withTitle("GET-USER-POSTS-DEMO-STEP")
+                .withId(UUID.randomUUID().toString())
+                .withHttpMethod("GET")
+                .withHeaders(new HashMap<>())
+                .withBody("")
+                .withExtract(new HashMap<>())
+                .withAssertions(new HashMap<>())
+                .withRoutes(new HashMap<>())
+                .withPosition(new Step.Position(960, 80))
+                .build();
+
+        Flow newMockupFlow = flowBuilder.withSteps(List.of(loginStep, addPostStep, getUserPosts)).build();
+
+        newMockupFlow = flowRepository.save(newMockupFlow);
+        updateCachedFlow(newMockupFlow.convertToDTO());
+
+        return newMockupFlow;
     }
 
     public enum StepGroup{

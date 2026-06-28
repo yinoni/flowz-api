@@ -1,5 +1,6 @@
 package com.flowzapi.flowz_api_builder.model.step;
 
+import com.flowzapi.flowz_api_builder.model.flow.WSMessage;
 import lombok.Data;
 import lombok.Getter;
 import lombok.Setter;
@@ -7,10 +8,7 @@ import lombok.Setter;
 @Data
 @Getter
 @Setter
-public class StepWSResponse {
+public class StepWSResponse extends WSMessage {
     private String stepId;
-    private String message;
-    private String status;
-    private boolean success;
     private String response;
 }

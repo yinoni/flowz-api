@@ -8,6 +8,7 @@ import org.springframework.amqp.core.DirectExchange;
 import org.springframework.amqp.core.Queue;
 import org.springframework.amqp.rabbit.config.SimpleRabbitListenerContainerFactory;
 import org.springframework.amqp.rabbit.connection.ConnectionFactory;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.amqp.support.converter.JacksonJsonMessageConverter;
 import org.springframework.amqp.support.converter.MessageConverter;
 import org.springframework.boot.amqp.autoconfigure.SimpleRabbitListenerContainerFactoryConfigurer;
@@ -20,18 +21,31 @@ import java.util.Map;
 @Slf4j
 @Configuration
 public class RabbitMQConfig {
+    // ========================================================================
+    // FLOWS PIPELINE CONSTANTS
+    // =========================================================================
     public static final String QUEUE_FLOWS = "flows-queue";
     public static final String FLOWS_EXCHANGE = "flows-exchange";
     public static final String ROUTING_KEY_FLOWS = "flows.execution.run";
+
+    // Flows DLQ
     public static final String FLOWS_DLX = "flows-dlx";
     public static final String FLOWS_DLQ = "flows-dlq";
     public static final String ROUTING_KEY_FLOWS_DLQ = "flows.dead.letter";
+
+    // ========================================================================
+    // EMAILS PIPELINE CONSTANTS
+    // =========================================================================
+
     public static final String EMAILS_QUEUE = "emails-queue";
     public static final String EMAILS_ROUTING_KEY = "emails.send";
     public static final String EMAILS_EXCHANGE= "emails-exchange";
+
+    //Emails DLQ
     public static final String EMAILS_DLQ = "emails-dlq";
     public static final String EMAILS_DLX = "emails-dlx";
     public static final String EMAILS_DLQ_ROUTING = "emails.dead.letter";
+
 
 
     @Bean
@@ -133,7 +147,15 @@ public class RabbitMQConfig {
     }
 
     @Bean
+    public RabbitTemplate rabbitTemplate(ConnectionFactory connectionFactory, MessageConverter jsonMessageConverter) {
+        RabbitTemplate template = new RabbitTemplate(connectionFactory);
+        template.setMessageConverter(jsonMessageConverter);
+        return template;
+    }
+
+    @Bean
     public MessageConverter jsonMessageConverter() {
         return new JacksonJsonMessageConverter();
     }
+
 }

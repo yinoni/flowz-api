@@ -16,10 +16,10 @@ public class FlowExecutionConsumer {
 
     @RabbitListener(
             queues = RabbitMQConfig.QUEUE_FLOWS,
-            concurrency = "5-10",
+            concurrency = "3-5",
             containerFactory = "rabbitContainerFactory")
-    public void consumeFlowExecution(FlowExecutionEvent event) throws Exception {
-        log.info("Worker picked up Flow {} for user {} from RabbitMQ", event.getFlowId(), event.getUserId());
-        flowExecutionService.executeFlow(event.getFlowId(), event.getUserId());
+    public void consumeFlowExecution(FlowExecutionEvent event){
+        log.info("Worker picked up execution id {} for user {} from RabbitMQ", event.getExecutionId(), event.getUserId());
+        flowExecutionService.executeFlow(event.getExecutionId(), event.getFlowId(), event.getUserId());
     }
 }

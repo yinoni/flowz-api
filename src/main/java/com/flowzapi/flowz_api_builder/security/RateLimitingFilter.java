@@ -80,11 +80,6 @@ public class RateLimitingFilter extends OncePerRequestFilter {
             return auth.getName(); // כאן תוכל להמיר ל-CustomUserDetails שלך במידת הצורך (.getId())
         }
 
-        // אם הוא אנונימי (למשל בדפי ה-Auth) - נזהה לפי ה-IP שלו
-        String ip = request.getHeader("X-Forwarded-For");
-        if (ip == null || ip.isEmpty()) {
-            ip = request.getRemoteAddr();
-        }
-        return ip;
+        return request.getRemoteAddr();
     }
 }

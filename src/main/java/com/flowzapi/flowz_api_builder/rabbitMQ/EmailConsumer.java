@@ -18,7 +18,7 @@ public class EmailConsumer {
 
     @RabbitListener(
             queues = RabbitMQConfig.EMAILS_QUEUE,
-            concurrency = "5-10",
+            concurrency = "1",
             containerFactory = "rabbitContainerFactory")
     public void consumeEmailSending(EmailEventDTO event) throws Exception {
         log.info("Sending private code to {}. The private code is {}", event.getToEmail(), event.getVerificationCode());
