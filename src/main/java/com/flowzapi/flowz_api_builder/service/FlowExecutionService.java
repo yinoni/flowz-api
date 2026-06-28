@@ -1,25 +1,23 @@
 package com.flowzapi.flowz_api_builder.service;
 
+import com.flowzapi.flowz_api_builder.config.RabbitMQConfig;
 import com.flowzapi.flowz_api_builder.exception.*;
 import com.flowzapi.flowz_api_builder.model.Flow;
 import com.flowzapi.flowz_api_builder.model.Step;
-import com.flowzapi.flowz_api_builder.model.flow.FlowTestResponse;
-import com.flowzapi.flowz_api_builder.model.flow.FlowTestResponseBuilder;
+import com.flowzapi.flowz_api_builder.model.flow.*;
 import com.flowzapi.flowz_api_builder.model.step.StepWSResponse;
 import com.flowzapi.flowz_api_builder.model.step.StepWSResponseBuilder;
 import com.flowzapi.flowz_api_builder.repos.FlowRepository;
 import com.flowzapi.flowz_api_builder.utils.JsonFlattener;
 import lombok.RequiredArgsConstructor;
-import org.checkerframework.checker.units.qual.A;
-import org.springframework.data.redis.core.RedisTemplate;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
+import java.util.concurrent.CompletableFuture;
 import java.net.InetAddress;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -31,22 +29,22 @@ import java.util.concurrent.TimeUnit;
 
 import static com.flowzapi.flowz_api_builder.model.StepBuilder.aStep;
 import static com.flowzapi.flowz_api_builder.model.flow.FlowTestResponseBuilder.aFlowTestResponse;
+import static com.flowzapi.flowz_api_builder.model.flow.FlowWSMessageBuilder.aFlowWSMessage;
 import static com.flowzapi.flowz_api_builder.model.step.StepWSResponseBuilder.aStepWSResponse;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class FlowExecutionService {
 
-    private final RedisTemplate redisTemplate;
     private final FlowRepository flowRepository;
-    private final String REDIS_EXECUTION_ID_KEY = "execution-id:";
     private final ObjectMapper objectMapper;
     private JsonFlattener flattener = new JsonFlattener();
-    private final SimpMessagingTemplate messagingTemplate;
-    private final String SOCKET_TOPIC_DESTINATION = "/flow-events/";
     private final HttpClient client = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
             .build();
+    private final SseLogsService sseLogsService;
+
 
     public Flow findById(String flowId) {
         return flowRepository.findById(flowId)
@@ -58,89 +56,40 @@ public class FlowExecutionService {
             throw new UserNotAllowedException("User is not allowed to access flow");
     }
 
-    public String getExecutionID(String flowID, String userID){
-        Flow flow = flowRepository.findById(flowID).orElseThrow(() ->
-                new FlowNotFound("Flow with id: " + flowID + " not found"));
-
-        if(!flow.getOwnerId().equals(userID))
-            throw new UserNotAllowedException("User not allowed to do this action");
-
-        String executionID = UUID.randomUUID().toString();
-        try {
-            String executionValue = objectMapper.writeValueAsString(Map.of("userId", userID, "flowId", flowID));
-
-            redisTemplate.opsForValue().set(REDIS_EXECUTION_ID_KEY + executionID, executionValue, 10, TimeUnit.MINUTES);
-        }
-        catch (Exception e) {
-            throw new RuntimeException("Failed to serialize execution context to JSON", e);
-        }
-
-        return executionID;
-    }
-
-    @Async
-    public void executeFlow(String executionID, String userID){
+    public void executeFlow(String executionID, String flowId, String userID) {
+        FlowWSMessageBuilder flowWSMessageBuilder = aFlowWSMessage();
         try{
-            String redisValue = (String) redisTemplate.opsForValue().get(REDIS_EXECUTION_ID_KEY + executionID);
-            if(redisValue == null) {
-                System.out.println("SOCKET MESSAGE => Error! Execution ID not found or expired.");
-                messagingTemplate.convertAndSend(SOCKET_TOPIC_DESTINATION + executionID, (Object) Map.of(
-                        "status", "FLOW_FAILED",
-                        "success", false,
-                        "message", "Execution ID not found or expired."
-                ));
-                return;
-            }
+                flowWSMessageBuilder
+                        .withStatus("FLOW_STARTING")
+                        .withSuccess(true)
+                        .withMessage("Flow is executing...");
 
-            Map<String, String> mappedValue = objectMapper.readValue(redisValue, Map.class);
-
-            if(mappedValue != null && mappedValue.containsKey("userId") && mappedValue.containsKey("flowId")){
-                String flowId = mappedValue.get("flowId");
-                String userId = mappedValue.get("userId");
-
-                if(!userId.equals(userID))
-                    throw new UserNotAllowedException("User not allowed to do this action");
-
-                messagingTemplate.convertAndSend(SOCKET_TOPIC_DESTINATION + executionID, (Object) Map.of(
-                        "status", "FLOW_STARTING",
-                        "success", true,
-                        "message", "Executing..."
-                ));
+                sendWSMessage(flowWSMessageBuilder.build(), executionID);
 
                 boolean flowFailed = execute(flowId, userID, executionID);
 
-                FlowTestResponseBuilder flowTestResponseBuilder = aFlowTestResponse()
-                        .withTestPassed(flowFailed)
-                        .withMessage(flowFailed ? "Execution Failed" : "Execution Succeeded")
-                        .withStatus(flowFailed ? "FLOW_FAILED" : "FLOW_PASSED");
+                flowWSMessageBuilder
+                        .withStatus(flowFailed ? "FLOW_FAILED" : "FLOW_PASSED")
+                        .withSuccess(!flowFailed)
+                        .withMessage(flowFailed ? "Execution Failed" : "Execution Succeeded");
 
-                FlowTestResponse testResponse = flowTestResponseBuilder.build();
-
-                messagingTemplate.convertAndSend(SOCKET_TOPIC_DESTINATION + executionID, (Object) Map.of(
-                       "status", testResponse.getStatus(),
-                       "success", testResponse.isTestPassed(),
-                        "message", testResponse.getMessage()
-                ));
-            }
-            else {
-                messagingTemplate.convertAndSend(SOCKET_TOPIC_DESTINATION + executionID, (Object) Map.of(
-                        "status", "FLOW_FAILED",
-                        "success", false,
-                        "message", "Bad request! Check your parameters."
-                ));
-
-                System.out.println("SOCKET MESSAGE => Bad request! Check your parameters.");
-            }
+                sendWSMessage(flowWSMessageBuilder.build(), executionID);
         }
         catch(Exception e){
-            messagingTemplate.convertAndSend(SOCKET_TOPIC_DESTINATION + executionID, (Object) Map.of(
-                    "status", "FLOW_FAILED",
-                    "success", false,
-                    "message", e.getMessage()
-            ));
+            flowWSMessageBuilder
+                    .withStatus("FLOW_FAILED")
+                    .withSuccess(false)
+                    .withMessage(e.getMessage());
+
+            sendWSMessage(flowWSMessageBuilder.build(), executionID);
+
         }
         finally {
-            redisTemplate.delete(REDIS_EXECUTION_ID_KEY + executionID);
+            // Run completeSession on a separate thread so the tContainer consumer thread
+            // can return and ack the AMQP message cleanly before the SSE async context is torn down.
+            // Calling emitter.complete() synchronously from the consumer thread can corrupt
+            // the consumer channel state on CloudAMQP SSL, causing the next message to not be consumed.
+            CompletableFuture.runAsync(() -> sseLogsService.completeSession(executionID));
         }
 
     }
@@ -219,7 +168,7 @@ public class FlowExecutionService {
                 if(Objects.nonNull(nextStepId)){
                     if(!statusCode.startsWith("2")) {
                         if (retryCount >= 1) {
-                            System.err.println("Max retries reached for step: " + currentStep.getId() + ". Stopping flow.");
+                            log.error("Max retries reached for step: " + currentStep.getId() + ". Stopping flow.");
                             throw new StepExecutionException("Max retries reached for step: " + currentStep.getId() + ". Stopping flow.", HttpStatus.BAD_REQUEST);
                         }
                         currentStep = fallbackStepsMap.get(nextStepId);
@@ -230,7 +179,7 @@ public class FlowExecutionService {
                                 .withMessage("Enter fallback: " + currentStep.getTitle())
                                 .withSuccess(false)
                                 .withResponse(response.body());
-                        sendWSForStep(stepWSResponseBuilder.build(), executionID);
+                        sendWSMessage(stepWSResponseBuilder.build(), executionID);
 
                         retry = true;
                         retryCount++;
@@ -259,7 +208,7 @@ public class FlowExecutionService {
 
                     //Extract the response body and add it to the flowContent
                     flowContent.putAll(extractBody(mappedBody, currentStep.getExtract(), activeAssertions));
-                    sendWSForStep(stepWSResponseBuilder.build(), executionID);
+                    sendWSMessage(stepWSResponseBuilder.build(), executionID);
                     if(retry){
                         currentStep = stepsList.get(currentStepIndex);
                         retry = false;
@@ -281,7 +230,7 @@ public class FlowExecutionService {
                             .withSuccess(false)
                             .withResponse(e.getMessage());
 
-                    sendWSForStep(stepWSResponseBuilder.build(), executionID);
+                    sendWSMessage(stepWSResponseBuilder.build(), executionID);
                     currentStep = null;
                     flowFailed = true;
                 }
@@ -373,7 +322,8 @@ public class FlowExecutionService {
         validateUrl(url);
 
         HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
-                .uri(URI.create(url));
+                .uri(URI.create(url))
+                .timeout(Duration.ofSeconds(30));
 
         finalHeaders.forEach(requestBuilder::header);
 
@@ -429,14 +379,27 @@ public class FlowExecutionService {
         return extractedBody;
     }
 
-    private void sendWSForStep(StepWSResponse stepResponse, String executionID){
-        messagingTemplate.convertAndSend(SOCKET_TOPIC_DESTINATION + executionID, (Object) Map.of(
-                "status", stepResponse.getStatus(),
-                "success", stepResponse.isSuccess(),
-                "message", stepResponse.getMessage(),
-                stepResponse.getStepId(), stepResponse.isSuccess(),
-                "response", stepResponse.getResponse()
-        ));
+    private void sendWSMessage(WSMessage wsMessage, String executionID){
+        try {
+            if (wsMessage != null) {
+                Map<String, Object> mappedWSMessage = convertToMap(wsMessage);
+                sseLogsService.sendMessage(executionID, mappedWSMessage);
+            }
+
+
+        } catch (Exception e) {
+            log.error("Failed to publish log event for executionId {}: {}", executionID, e.getMessage());
+        }
+    }
+
+    public Map<String, Object> convertToMap(WSMessage wsMessage) {
+        Map<String, Object> map = objectMapper.convertValue(wsMessage, Map.class);
+        if (wsMessage instanceof StepWSResponse stepWSResponse) {
+            map.put(stepWSResponse.getStepId(), stepWSResponse.isSuccess());
+            map.remove("stepId");
+            map.remove("type");
+        }
+        return map;
     }
 
 

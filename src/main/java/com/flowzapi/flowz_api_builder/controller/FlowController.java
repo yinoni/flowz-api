@@ -1,10 +1,12 @@
 package com.flowzapi.flowz_api_builder.controller;
 
+import com.flowzapi.flowz_api_builder.model.Flow;
 import com.flowzapi.flowz_api_builder.model.flow.*;
 import com.flowzapi.flowz_api_builder.model.step.StepRequest;
 import com.flowzapi.flowz_api_builder.model.user.CustomUserDetails;
 import com.flowzapi.flowz_api_builder.service.FlowService;
 import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -14,10 +16,11 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/flow")
+@RequiredArgsConstructor
 public class FlowController {
 
-    @Autowired
-    private FlowService flowService;
+
+    private final FlowService flowService;
 
     @GetMapping("/{flowId}")
     public ResponseEntity<FlowDTO> getFlow(@PathVariable String flowId, @RequestParam String projectId, @AuthenticationPrincipal CustomUserDetails customUserDetails) {
@@ -94,5 +97,10 @@ public class FlowController {
         flowService.deleteFallback(flowId, fallbackId, customUserDetails.getId());
 
         return ResponseEntity.ok("step deleted");
+    }
+
+    @PostMapping("/mockup/{projectId}")
+    public ResponseEntity<Flow> createMockUpFlow(@PathVariable String projectId, @AuthenticationPrincipal CustomUserDetails customUserDetails) {
+        return ResponseEntity.ok(flowService.createMockupFlow(projectId, customUserDetails.getId()));
     }
 }
