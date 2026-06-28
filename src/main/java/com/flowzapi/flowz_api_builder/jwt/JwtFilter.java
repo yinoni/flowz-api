@@ -52,7 +52,7 @@ public class JwtFilter extends OncePerRequestFilter {
                 Boolean verifiedClaim = jwtService.extractClaim(token, "verified", Boolean.class);
                 boolean isVerified = (verifiedClaim != null && verifiedClaim) || isAuthPath;
 
-                if (email != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+                if (email != null && SecurityContextHolder.getContext().getAuthentication() == null && isVerified) {
                     UserDetails userDetails = userDetailsService.loadUserByUsername(email);
 
                     UsernamePasswordAuthenticationToken authToken =
