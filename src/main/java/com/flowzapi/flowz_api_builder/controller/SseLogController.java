@@ -29,6 +29,6 @@ public class SseLogController {
     public ResponseEntity<SseEmitter> executeAndStream(@PathVariable String flowId, @AuthenticationPrincipal CustomUserDetails user) {
         SseEmitter emitter = sseLogsService.executeAndStream(flowId, user.getId());
 
-      return ResponseEntity.ok(emitter);
+        return ResponseEntity.ok(emitter);
     }
 }

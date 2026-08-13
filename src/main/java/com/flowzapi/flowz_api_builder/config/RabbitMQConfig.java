@@ -46,7 +46,44 @@ public class RabbitMQConfig {
     public static final String EMAILS_DLX = "emails-dlx";
     public static final String EMAILS_DLQ_ROUTING = "emails.dead.letter";
 
+    // ========================================================================
+    // AI PIPELINE CONSTANTS
+    // =========================================================================
+    public static final String AI_GENERATE_QUEUE = "ai-generate-queue";
+    public static final String AI_DLX = "ai-dlx";
 
+    // ========================================================================
+    // AI GENERATE RESULT PIPELINE CONSTANTS
+    // =========================================================================
+    public static final String AI_RESULT_QUEUE = "ai-generate-result-queue";
+    public static final String AI_RESULT_DLQ   = "ai-generate-result-dlq";
+    public static final String AI_RESULT_DLQ_ROUTING = "ai.generate.result.dead.letter";
+
+    @Bean
+    public Queue aiResultQueue() {
+        Map<String, Object> args = new HashMap<>();
+
+        args.put("x-dead-letter-exchange", AI_DLX);
+        args.put("x-dead-letter-routing-key", AI_RESULT_DLQ_ROUTING);
+        return new Queue(AI_RESULT_QUEUE, true, false, false, args);
+    }
+
+    @Bean
+    public DirectExchange aiDLX() {
+        return new DirectExchange(AI_DLX, true, false);
+    }
+
+    @Bean
+    public Queue aiResultDlq() {
+        return new Queue(AI_RESULT_DLQ, true, false, false);
+    }
+
+    @Bean
+    public Binding bindingAIResultDLQ() {
+        return BindingBuilder.bind(aiResultDlq())
+                .to(aiDLX())
+                .with(AI_RESULT_DLQ_ROUTING);
+    }
 
     @Bean
     public Queue emailsQueue() {
