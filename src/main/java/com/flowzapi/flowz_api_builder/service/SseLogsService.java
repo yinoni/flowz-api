@@ -1,6 +1,11 @@
 package com.flowzapi.flowz_api_builder.service;
 
+import com.flowzapi.flowz_api_builder.model.ai.AIGenerateEvent;
+import com.flowzapi.flowz_api_builder.model.ai.GenerateFlowRequest;
+import com.flowzapi.flowz_api_builder.model.user.CustomUserDetails;
+import com.flowzapi.flowz_api_builder.rabbitMQ.AIFlowPublisher;
 import com.flowzapi.flowz_api_builder.rabbitMQ.FlowPublisherService;
+import com.flowzapi.flowz_api_builder.repos.FlowRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -17,7 +22,39 @@ public class SseLogsService {
     private final Map<String, SseEmitter> emitters = new ConcurrentHashMap<>();
     private final FlowPublisherService flowPublisherService;
     private final FlowService flowService;
+    private final ProjectService projectService;
+    private final AIFlowPublisher aiFlowPublisher;
 
+    public SseEmitter publishAIAndStream(GenerateFlowRequest generateFlowRequest, String userId) {
+        projectService.findById(generateFlowRequest.getProjectId(), userId);
+        String requestId = UUID.randomUUID().toString();
+        SseEmitter emitter = createEmitter(requestId);
+
+        try {
+            emitter.send(SseEmitter.event().name("init").data(Map.of("requestId", requestId)));
+        } catch (IOException e) {
+            emitters.remove(requestId);
+            return emitter;
+        }
+
+        try {
+            AIGenerateEvent aiGenerateEvent = new AIGenerateEvent(
+                    generateFlowRequest.getQuery(),
+                    userId,
+                    generateFlowRequest.getProjectId(),
+                    requestId
+                    );
+            aiFlowPublisher.publishAIGenerateEvent(aiGenerateEvent);
+        } catch (Exception e) {
+            log.error("Failed to publish AI flow generation for requestId {}: {}", requestId, e.getMessage());
+            emitters.remove(requestId);
+            try {
+                emitter.send(SseEmitter.event().name("error").data(Map.of("message", "Failed to start execution, please try again")));
+            } catch (IOException ignored) {}
+        }
+
+        return emitter;
+    }
 
     public SseEmitter executeAndStream(String flowId, String userId) {
         String executionId = UUID.randomUUID().toString();
