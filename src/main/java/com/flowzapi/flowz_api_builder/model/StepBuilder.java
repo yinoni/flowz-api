@@ -1,5 +1,7 @@
 package com.flowzapi.flowz_api_builder.model;
 
+import com.flowzapi.flowz_api_builder.model.enums.Method;
+
 import java.util.Map;
 
 public final class StepBuilder {
@@ -8,7 +10,7 @@ public final class StepBuilder {
     private String title;
     private String body;
     private Map<String, String> headers;
-    private String httpMethod;
+    private Method httpMethod;
     private Map<String, String> extract;
     private Map<String, Object> assertions;
     private Map<String, String> routes;
@@ -46,7 +48,7 @@ public final class StepBuilder {
         return this;
     }
 
-    public StepBuilder withHttpMethod(String httpMethod) {
+    public StepBuilder withHttpMethod(Method httpMethod) {
         this.httpMethod = httpMethod;
         return this;
     }

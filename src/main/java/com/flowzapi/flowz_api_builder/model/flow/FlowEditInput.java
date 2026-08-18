@@ -20,7 +20,7 @@ public class FlowEditInput {
     @NotBlank(message = flowIdMessage)
     private String id;
 
-    @Size(min = 5, max = 20, message = "Flow name size should be between 5 - 20 characters")
+    @Size(min = 5, message = "Flow name size should be minimum 5 characters")
     private String flowName;
 
     @NotBlank(message = "Global URL is required")

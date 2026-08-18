@@ -24,9 +24,9 @@ public class AiController {
         return ResponseEntity.ok("alive");
     }
 
-    @PostMapping("")
-    public ResponseEntity<?> publishAIAndStream(@RequestBody @Valid GenerateFlowRequest generateFlowRequest, @AuthenticationPrincipal CustomUserDetails customUserDetails) {
-        return ResponseEntity.ok(sseLogsService.publishAIAndStream(generateFlowRequest, customUserDetails.getId()));
+    @GetMapping("/{projectId}")
+    public ResponseEntity<SseEmitter> publishAIAndStream(@PathVariable String projectId, @RequestParam String query, @AuthenticationPrincipal CustomUserDetails userDetails) {
+        return ResponseEntity.ok(sseLogsService.publishAIAndStream(projectId, query, userDetails.getId()));
     }
 
 }

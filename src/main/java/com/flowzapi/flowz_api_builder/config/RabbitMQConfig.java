@@ -51,6 +51,7 @@ public class RabbitMQConfig {
     // =========================================================================
     public static final String AI_GENERATE_QUEUE = "ai-generate-queue";
     public static final String AI_DLX = "ai-dlx";
+    public static final String AI_FLOW_EVENTS = "ai-flow-events";
 
     // ========================================================================
     // AI GENERATE RESULT PIPELINE CONSTANTS

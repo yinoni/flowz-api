@@ -1,5 +1,6 @@
 package com.flowzapi.flowz_api_builder.model;
 
+import com.flowzapi.flowz_api_builder.model.enums.Method;
 import jakarta.validation.constraints.NotBlank;
 import lombok.*;
 import org.springframework.data.mongodb.core.mapping.Document;
@@ -22,7 +23,7 @@ public class Step {
     private String title;
     private String body;
     private Map<String, String> headers;
-    private String httpMethod;
+    private Method httpMethod;
     private Map<String, String> extract;
     private Map<String, Object> assertions;
     private Map<String, String> routes;

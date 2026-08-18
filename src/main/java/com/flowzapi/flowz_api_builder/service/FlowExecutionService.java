@@ -332,7 +332,7 @@ public class FlowExecutionService {
                 : HttpRequest.BodyPublishers.noBody();
 
 
-        requestBuilder.method(step.getHttpMethod(), bodyPublisher);
+        requestBuilder.method(step.getHttpMethod().toString(), bodyPublisher);
 
         return requestBuilder.build();
     }

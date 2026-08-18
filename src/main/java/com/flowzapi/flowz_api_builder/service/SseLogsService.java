@@ -8,6 +8,7 @@ import com.flowzapi.flowz_api_builder.rabbitMQ.FlowPublisherService;
 import com.flowzapi.flowz_api_builder.repos.FlowRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import java.io.IOException;
@@ -25,8 +26,8 @@ public class SseLogsService {
     private final ProjectService projectService;
     private final AIFlowPublisher aiFlowPublisher;
 
-    public SseEmitter publishAIAndStream(GenerateFlowRequest generateFlowRequest, String userId) {
-        projectService.findById(generateFlowRequest.getProjectId(), userId);
+    public SseEmitter publishAIAndStream(String projectId, String query, String userId) {
+        projectService.findById(projectId, userId);
         String requestId = UUID.randomUUID().toString();
         SseEmitter emitter = createEmitter(requestId);
 
@@ -39,9 +40,9 @@ public class SseLogsService {
 
         try {
             AIGenerateEvent aiGenerateEvent = new AIGenerateEvent(
-                    generateFlowRequest.getQuery(),
+                    query,
                     userId,
-                    generateFlowRequest.getProjectId(),
+                    projectId,
                     requestId
                     );
             aiFlowPublisher.publishAIGenerateEvent(aiGenerateEvent);
@@ -111,6 +112,22 @@ public class SseLogsService {
         } catch (Exception e) {
             log.warn("SseEmitter.sendMessage failed for executionId {}: {}", executionId, e.getMessage());
             emitters.remove(executionId);
+        }
+    }
+
+    public void sendMessage(String eventName, String requestId, Map<String, Object> payload) {
+        SseEmitter emitter = getEmitter(requestId);
+
+        if (emitter == null) {
+            log.warn("SseEmitter not found or already closed for requestId: {}", requestId);
+            return;
+        }
+
+        try {
+            emitter.send(SseEmitter.event().name(eventName).data(payload, MediaType.APPLICATION_JSON));
+        } catch (Exception e) {
+            log.warn("SseEmitter.sendMessage failed for requestId {}: {}", requestId, e.getMessage());
+            emitters.remove(requestId);
         }
     }
 

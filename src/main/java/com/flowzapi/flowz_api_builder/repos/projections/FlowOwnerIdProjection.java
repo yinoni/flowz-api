@@ -4,4 +4,5 @@ public interface FlowOwnerIdProjection {
     String getOwnerId();
     String getId();
     String getProjectId();
+    Long getVersion();
 }

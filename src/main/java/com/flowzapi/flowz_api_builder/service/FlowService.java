@@ -1,16 +1,19 @@
 package com.flowzapi.flowz_api_builder.service;
 
-import com.flowzapi.flowz_api_builder.exception.BadRequestException;
-import com.flowzapi.flowz_api_builder.exception.FlowNotFound;
-import com.flowzapi.flowz_api_builder.exception.SyncException;
-import com.flowzapi.flowz_api_builder.exception.UserNotAllowedException;
+import com.flowzapi.flowz_api_builder.exception.*;
 import com.flowzapi.flowz_api_builder.model.Flow;
 import com.flowzapi.flowz_api_builder.model.FlowBuilder;
 import com.flowzapi.flowz_api_builder.model.Project;
 import com.flowzapi.flowz_api_builder.model.Step;
+import com.flowzapi.flowz_api_builder.model.ai.AIDeleteFlowByProjectIdEvent;
+import com.flowzapi.flowz_api_builder.model.ai.AIDeleteFlowEvent;
+import com.flowzapi.flowz_api_builder.model.ai.AIGenerateResultEvent;
+import com.flowzapi.flowz_api_builder.model.ai.AIUpsertEvent;
+import com.flowzapi.flowz_api_builder.model.enums.Method;
 import com.flowzapi.flowz_api_builder.model.flow.*;
 import com.flowzapi.flowz_api_builder.model.project.ProjectDTO;
 import com.flowzapi.flowz_api_builder.model.step.StepRequest;
+import com.flowzapi.flowz_api_builder.rabbitMQ.AIFlowEventsPublisher;
 import com.flowzapi.flowz_api_builder.repos.FlowRepository;
 import com.flowzapi.flowz_api_builder.repos.projections.FlowOwnerIdProjection;
 import com.flowzapi.flowz_api_builder.repos.projections.FlowStepsProjection;
@@ -19,6 +22,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.bson.Document;
+import org.checkerframework.checker.units.qual.A;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.data.mongodb.MongoExpression;
@@ -58,6 +62,7 @@ public class FlowService {
     private final String FLOW_REDIS_KEY = "project-flows:";
     private final Duration GLOBAL_DURATION =  Duration.ofHours(1);
     private final ObjectMapper objectMapper;
+    private final AIFlowEventsPublisher aiFlowEventsPublisher;
 
     /**
      *
@@ -250,8 +255,16 @@ public class FlowService {
                 .withGlobalHeaders(flowInput.getGlobalHeaders())
                 .withGlobalAssertions(new HashMap<>())
                 .withLastModified(Instant.now())
+                .withFallbacks(new ArrayList<>())
                 .build();
 
+        FlowDTO newFlowDTO = flowRepository.save(flow).convertToDTO();
+        updateCachedFlow(newFlowDTO);
+
+        return newFlowDTO;
+    }
+
+    public FlowDTO saveFlow(Flow flow){
         FlowDTO newFlowDTO = flowRepository.save(flow).convertToDTO();
         updateCachedFlow(newFlowDTO);
 
@@ -324,17 +337,25 @@ public class FlowService {
      *  This function adds new step to the flow with the flowId
      */
     public String addStep(String flowId, StepRequest stepRequest, String userId){
-        FlowStepsProjection stepsProjection = findStepsProjectedById(flowId, userId);
+        Flow flow = flowRepository.findById(flowId)
+                .orElseThrow(FlowNotFound::new);
+
+        isUserAllowed(flow.getOwnerId(), userId);
+
+        List<Step> targetList = switch (stepRequest.getStepGroup()) {
+            case STEPS -> flow.getSteps();
+            case FALLBACKS -> flow.getFallbacks();
+        };
 
         String stepUUID = UUID.randomUUID().toString();
         Step step = stepRequest.getStep();
-        String fieldName = stepRequest.getStepGroup().toDbField();
 
         step.setId(stepUUID);
 
-        Update update = new Update().push(fieldName, step);
+        targetList.add(step);
 
-        updateFlowInternals(update, stepsProjection.getId(), stepsProjection.getProjectId(), null);
+        Flow saved = flowRepository.save(flow);
+        aiFlowEventsPublisher.publishAIUpsertEvent(convertToIndexView(saved));
 
         return stepUUID;
     }
@@ -343,6 +364,7 @@ public class FlowService {
         FlowOwnerIdProjection flowOwnerIdProjection = findOwnerIdProjectedById(flowId, userId);
 
         flowRepository.deleteById(flowId);
+        aiFlowEventsPublisher.publishVectorFlowDelete(flowId);
 
         String projectId =  flowOwnerIdProjection.getProjectId();
         String redisKey = getRedisKey(projectId);
@@ -372,6 +394,8 @@ public class FlowService {
     public void deleteFlowByProjectId(String projectId){
         flowRepository.deleteByProjectId(projectId);
 
+        aiFlowEventsPublisher.publishVectorFlowDeleteByProjectId(projectId);
+
         String redisKey = getRedisKey(projectId);
         try {
             redisTemplate.delete(redisKey);
@@ -390,12 +414,21 @@ public class FlowService {
      * @param userId - The current user ID
      */
     public void deleteStep(String flowId, String stepId, String userId){
-        FlowStepsProjection stepsProjection = findStepsProjectedById(flowId, userId);
+        Flow flow = flowRepository.findById(flowId).orElseThrow(FlowNotFound::new);
+        isUserAllowed(flow.getOwnerId(), userId);
 
-        Update update = new Update().pull("steps", Query.query(Criteria.where("id").is(stepId)));
+        List<Step> steps = flow.getSteps();
+        int prevLength = steps.size();
 
-        updateFlowInternals(update, stepsProjection.getId(), stepsProjection.getProjectId(), null);
+        steps = steps.stream().filter((step) -> !Objects.equals(step.getId(), stepId)).collect(Collectors.toCollection(ArrayList::new));
 
+        if(steps.size() == prevLength)
+            throw new StepNotFound();
+
+        flow.setSteps(steps);
+        Flow savedFlow = flowRepository.save(flow);
+
+        aiFlowEventsPublisher.publishAIUpsertEvent(convertToIndexView(savedFlow));
     }
 
     /**
@@ -405,29 +438,45 @@ public class FlowService {
      * @param userId - The current user that logged in
      */
     public void editStep(String flowId, StepRequest stepRequest, String userId){
-        FlowStepsProjection stepsProjection = findStepsProjectedById(flowId, userId);
+        Flow flow = flowRepository.findById(flowId).orElseThrow(FlowNotFound::new);
 
-        String stepField = stepRequest.getStepGroup().toDbField();
+        isUserAllowed(flow.getOwnerId(), userId);
+
+        List<Step> targetList = switch (stepRequest.getStepGroup()) {
+            case STEPS -> flow.getSteps();
+            case FALLBACKS -> flow.getFallbacks();
+        };
+
         Step step = stepRequest.getStep();
+        if (Objects.isNull(step))
+            throw new BadRequestException("Step cannot be null");
 
-        Criteria stepCriteria =  Criteria.where("id").is(flowId).and(stepField+".id").is(step.getId());
-        Update update = new Update()
-                .set(stepField+".$",  step);
+        boolean found = false;
 
+        for(int i = 0; i < targetList.size(); i++){
+            Step currentStep = targetList.get(i);
+            if(Objects.nonNull(currentStep) && currentStep.getId().equals(step.getId())){
+                targetList.set(i, step);
+                found = true;
+                break;
+            }
+        }
 
-        updateFlowInternals(update,
-                stepsProjection.getId(),
-                stepsProjection.getProjectId(),
-                stepCriteria);
+        if(found){
+            Flow savedFlow = flowRepository.save(flow);
+            aiFlowEventsPublisher.publishAIUpsertEvent(convertToIndexView(savedFlow));
+        }
+
     }
 
     /**
      * This function edits an existing flow
      * @param flowEditInput - The flow edit input - contains the flowId, the new flow name and the new globalURL
      * @param userId - The ID of the current user
+     * This function also publish an event for re-embed in case the flow name was changed
      */
     public void editFlow(FlowEditInput flowEditInput, String userId){
-        findOwnerIdProjectedById(flowEditInput.getId(), userId);
+        FlowOwnerIdProjection flowOwnerIdProjection = findOwnerIdProjectedById(flowEditInput.getId(), userId);
 
         Query query = new Query(Criteria.where("id").is(flowEditInput.getId()));
         Update update = new Update()
@@ -435,14 +484,18 @@ public class FlowService {
                 .set("globalURL", flowEditInput.getGlobalURL())
                 .set("globalVariables", flowEditInput.getGlobalVariables())
                 .set("globalHeaders", flowEditInput.getGlobalHeaders())
-                .set("lastModified", Instant.now());
+                .set("lastModified", Instant.now())
+                .set("version", flowOwnerIdProjection.getVersion() + 1);
 
         FindAndModifyOptions options = new FindAndModifyOptions().returnNew(true);
 
         Flow flow = mongoTemplate.findAndModify(query, update, options, Flow.class);
 
-        if(flow != null)
+        if(flow != null) {
             updateCachedFlow(flow.convertToDTO());
+
+            aiFlowEventsPublisher.publishAIUpsertEvent(convertToIndexView(flow));
+        }
     }
 
     /**
@@ -541,9 +594,11 @@ public class FlowService {
      * This function add a step between two steps
      */
     public void syncCanvasSteps(String flowId, String userId, SyncStepsRequest syncStepsRequest){
-        FlowStepsProjection stepsProjection = findStepsProjectedById(flowId, userId);
+        Flow flow = flowRepository.findById(flowId).orElseThrow(FlowNotFound::new);
 
-        List<Step> steps = stepsProjection.getSteps();
+        isUserAllowed(flow.getOwnerId(), userId);
+
+        List<Step> steps = flow.getSteps();
 
         Map<String, Step> stepMap = steps.stream().collect(Collectors.toMap(Step::getId, step -> step));
 
@@ -575,9 +630,10 @@ public class FlowService {
             throw new BadRequestException("Missing existing steps in request!");
         }
 
-        Update update = new Update().set("steps", newOrderSteps);
+        flow.setSteps(newOrderSteps);
+        Flow savedFlow = flowRepository.save(flow);
 
-        updateFlowInternals(update, stepsProjection.getId(), stepsProjection.getProjectId(), null);
+        aiFlowEventsPublisher.publishAIUpsertEvent(convertToIndexView(savedFlow));
     }
 
     /**
@@ -644,7 +700,7 @@ public class FlowService {
                 .withUrl(globalURL+"/auth/login")
                 .withTitle("LOGIN-DEMO-STEP")
                 .withId(UUID.randomUUID().toString())
-                .withHttpMethod("POST")
+                .withHttpMethod(Method.POST)
                 .withHeaders(Map.of())
                 .withBody("{\"username\": \"{{username}}\", \"password\": \"{{password}}\"}")
                 .withExtract(Map.of("jwtToken", "accessToken", "userId", "id"))
@@ -657,7 +713,7 @@ public class FlowService {
                 .withUrl(globalURL+"/posts/add")
                 .withTitle("ADD-POST-DEMO-STEP")
                 .withId(UUID.randomUUID().toString())
-                .withHttpMethod("POST")
+                .withHttpMethod(Method.POST)
                 .withHeaders(Map.of())
                 .withBody("{\"title\": \"This is my first mock post!\", \"userId\": \"{{userId}}\"}")
                 .withExtract(Map.of("postId", "id"))
@@ -670,7 +726,7 @@ public class FlowService {
                 .withUrl(globalURL+"/users/{{userId}}/posts")
                 .withTitle("GET-USER-POSTS-DEMO-STEP")
                 .withId(UUID.randomUUID().toString())
-                .withHttpMethod("GET")
+                .withHttpMethod(Method.GET)
                 .withHeaders(new HashMap<>())
                 .withBody("")
                 .withExtract(new HashMap<>())
@@ -707,5 +763,77 @@ public class FlowService {
 
             return field;
         }
+    }
+
+    public Flow convertAIResultToFlow(AIGenerateResultEvent aiGenerateResultEvent){
+        String flowName = aiGenerateResultEvent.getFlow().getFlowName();
+        List<AIGenerateResultEvent.ResultFlow.ResultSteps> resultSteps = aiGenerateResultEvent.getFlow().getSteps();
+        return aFlow()
+                .withFlowName(flowName)
+                .withOwnerId(aiGenerateResultEvent.getOwnerId())
+                .withProjectId(aiGenerateResultEvent.getProjectId())
+                .withSteps(convertToSteps(resultSteps))
+                .withLastModified(Instant.now())
+                .withFallbacks(new ArrayList<>())
+                .withGlobalAssertions(new HashMap<>())
+                .withGlobalURL("")
+                .withGlobalHeaders(new HashMap<>())
+                .withGlobalVariables(new HashMap<>())
+                .build();
+    }
+
+    public List<Step> convertToSteps(List<AIGenerateResultEvent.ResultFlow.ResultSteps> aiGeneratedSteps){
+        List<Step> steps = new ArrayList<>();
+
+        for(AIGenerateResultEvent.ResultFlow.ResultSteps resultStep : aiGeneratedSteps){
+            String stepUUID = UUID.randomUUID().toString();
+            Step currentStep = aStep()
+                    .withExtract(resultStep.getExtract())
+                    .withBody(resultStep.getBody())
+                    .withUrl(resultStep.getPath())
+                    .withPosition(null)
+                    .withHttpMethod(resultStep.getHttpMethod())
+                    .withTitle(resultStep.getTitle())
+                    .withHeaders(new HashMap<>())
+                    .withAssertions(new HashMap<>())
+                    .withRoutes(new HashMap<>())
+                    .withId(stepUUID)
+                    .build();
+
+            steps.add(currentStep);
+        }
+
+        return steps;
+    }
+
+
+    public FlowIndexView convertToIndexView(Flow flow){
+        return FlowIndexView.builder()
+                .flowId(flow.getId())
+                .ownerId(flow.getOwnerId())
+                .projectId(flow.getProjectId())
+                .flowName(flow.getFlowName())
+                .flowLastModified(flow.getLastModified())
+                .steps(convertStepsToIndexView(flow.getSteps()))
+                .version(flow.getVersion())
+                .build();
+    }
+
+    public List<FlowIndexView.StepIndexView> convertStepsToIndexView(List<Step> steps){
+        List<FlowIndexView.StepIndexView> stepIndexViewList = new ArrayList<>();
+
+        for(Step step : steps){
+            FlowIndexView.StepIndexView stepIndexView = FlowIndexView.StepIndexView.builder()
+                    .assertions(step.getAssertions())
+                    .extract(step.getExtract())
+                    .httpMethod(step.getHttpMethod())
+                    .title(step.getTitle())
+                    .url(step.getUrl())
+                    .build();
+
+            stepIndexViewList.add(stepIndexView);
+        }
+
+        return stepIndexViewList;
     }
 }
