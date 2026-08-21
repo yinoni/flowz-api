@@ -15,8 +15,11 @@ public class AIFlowPublisher {
     private final RabbitTemplate rabbitTemplate;
 
     public void publishAIGenerateEvent(AIGenerateEvent aiGenerateEvent) {
-        rabbitTemplate.convertAndSend("", RabbitMQConfig.AI_GENERATE_QUEUE, aiGenerateEvent);
-
-        log.info("Started the AI flow generation for user {} --> Request ID: {}", aiGenerateEvent.getRequestId(), aiGenerateEvent.getOwnerId());
+        try{
+            rabbitTemplate.convertAndSend("", RabbitMQConfig.AI_GENERATE_QUEUE, aiGenerateEvent);
+            log.info("Started the AI flow generation for user {} --> Request ID: {}", aiGenerateEvent.getRequestId(), aiGenerateEvent.getOwnerId());
+        } catch (Exception e) {
+            log.error("Failed to publish AI generate event for {}", aiGenerateEvent.getRequestId(), e);
+        }
     }
 }

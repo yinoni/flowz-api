@@ -16,6 +16,10 @@ public class EmailPublisher {
 
     public void sendVerificationCodePublisher(String toEmail, String verificationCode){
         EmailEventDTO emailEventDTO = new EmailEventDTO(toEmail, verificationCode);
-        rabbitTemplate.convertAndSend(RabbitMQConfig.EMAILS_EXCHANGE, RabbitMQConfig.EMAILS_ROUTING_KEY, emailEventDTO);
+        try{
+            rabbitTemplate.convertAndSend(RabbitMQConfig.EMAILS_EXCHANGE, RabbitMQConfig.EMAILS_ROUTING_KEY, emailEventDTO);
+        } catch (Exception e) {
+            log.error("Failed to publish email sending event", e);
+        }
     }
 }

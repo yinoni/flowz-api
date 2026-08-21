@@ -3,6 +3,7 @@ package com.flowzapi.flowz_api_builder.rabbitMQ;
 import com.flowzapi.flowz_api_builder.config.RabbitMQConfig;
 import com.flowzapi.flowz_api_builder.model.ai.AIDeleteFlowByProjectIdEvent;
 import com.flowzapi.flowz_api_builder.model.ai.AIDeleteFlowEvent;
+import com.flowzapi.flowz_api_builder.model.ai.AIEvent;
 import com.flowzapi.flowz_api_builder.model.ai.AIUpsertEvent;
 import com.flowzapi.flowz_api_builder.model.flow.FlowIndexView;
 import lombok.RequiredArgsConstructor;
@@ -19,16 +20,24 @@ public class AIFlowEventsPublisher {
 
     public void publishAIUpsertEvent(FlowIndexView flowIndexView) {
         AIUpsertEvent aiUpsertEvent = new AIUpsertEvent(flowIndexView);
-        rabbitTemplate.convertAndSend("", RabbitMQConfig.AI_FLOW_EVENTS, aiUpsertEvent);
+        send(aiUpsertEvent, flowIndexView.getFlowId());
     }
 
     public void publishVectorFlowDelete(String flowId){
         AIDeleteFlowEvent aiDeleteFlowEvent = new AIDeleteFlowEvent(flowId);
-        rabbitTemplate.convertAndSend("", RabbitMQConfig.AI_FLOW_EVENTS, aiDeleteFlowEvent);
+        send(aiDeleteFlowEvent, flowId);
     }
 
     public void publishVectorFlowDeleteByProjectId(String projectId){
         AIDeleteFlowByProjectIdEvent aiDeleteFlowEvent = new AIDeleteFlowByProjectIdEvent(projectId);
-        rabbitTemplate.convertAndSend("", RabbitMQConfig.AI_FLOW_EVENTS, aiDeleteFlowEvent);
+        send(aiDeleteFlowEvent, projectId);
+    }
+
+    public void send(AIEvent event, String context){
+        try{
+            rabbitTemplate.convertAndSend("", RabbitMQConfig.AI_FLOW_EVENTS, event);
+        } catch(Exception e){
+            log.error("Failed to publish {} for {}", event.getEventType(), context, e);
+        }
     }
 }

@@ -16,8 +16,13 @@ public class FlowPublisherService {
     public void publishFlowExecution(String userId, String flowId, String executionId) {
         FlowExecutionEvent event = new FlowExecutionEvent(userId, flowId, executionId);
 
-        rabbitTemplate.convertAndSend("", RabbitMQConfig.QUEUE_FLOWS, event);
+        try{
+            rabbitTemplate.convertAndSend("", RabbitMQConfig.QUEUE_FLOWS, event);
+            log.info("Execution id {} published to RabbitMQ for user {}", executionId, userId);
+        }
+        catch (Exception e){
+            log.error("Failed to publish flow generation event for flow: {}, execution id: {}", flowId, executionId, e);
+        }
 
-        log.info("Execution id {} published to RabbitMQ for user {}", executionId, userId);
     }
 }

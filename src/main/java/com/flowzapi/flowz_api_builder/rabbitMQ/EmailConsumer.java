@@ -10,6 +10,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.stereotype.Component;
 
+import java.time.Instant;
+
 @Component
 @RequiredArgsConstructor
 @Slf4j
@@ -20,8 +22,12 @@ public class EmailConsumer {
             queues = RabbitMQConfig.EMAILS_QUEUE,
             concurrency = "1",
             containerFactory = "rabbitContainerFactory")
-    public void consumeEmailSending(EmailEventDTO event) throws Exception {
-        log.info("Sending private code to {}. The private code is {}", event.getToEmail(), event.getVerificationCode());
-        emailService.sendVerificationEmail(event.getToEmail(), event.getVerificationCode());
+    public void consumeEmailSending(EmailEventDTO event) {
+        try {
+            emailService.sendVerificationEmail(event.getToEmail(), event.getVerificationCode());
+            log.info("Sending private code to {}. The private code is {}", event.getToEmail(), event.getVerificationCode());
+        } catch (Exception e) {
+            log.error("Failed to send email: ", e);
+        }
     }
 }
