@@ -485,7 +485,7 @@ public class FlowService {
                 .set("globalVariables", flowEditInput.getGlobalVariables())
                 .set("globalHeaders", flowEditInput.getGlobalHeaders())
                 .set("lastModified", Instant.now())
-                .set("version", flowOwnerIdProjection.getVersion() + 1);
+                .inc("version",1);
 
         FindAndModifyOptions options = new FindAndModifyOptions().returnNew(true);
 
